@@ -57,6 +57,12 @@ jobs:
             -p:DebugType=None -p:DebugSymbols=false `
             --output $publishDir
 
+          foreach ($required in @('App.xbf', 'MainWindow.xbf', 'Node.pri')) {
+            if (-not (Test-Path -LiteralPath (Join-Path $publishDir $required))) {
+              throw "Required WinUI resource is missing from publish output: $required"
+            }
+          }
+
           $localePattern = '^[a-z]{2,3}(?:-[A-Za-z0-9]+)+$'
           Get-ChildItem -LiteralPath $publishDir -Directory |
             Where-Object { $_.Name -match $localePattern -and $_.Name -notin @('ko-KR', 'en-US') } |

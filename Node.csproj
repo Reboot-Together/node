@@ -6,10 +6,10 @@
     <RootNamespace>NodeApp</RootNamespace>
     <AssemblyName>Node</AssemblyName>
     <Product>Node</Product>
-    <Version>0.1.1</Version>
-    <AssemblyVersion>0.1.1.0</AssemblyVersion>
-    <FileVersion>0.1.1.0</FileVersion>
-    <InformationalVersion>0.1.1</InformationalVersion>
+    <Version>0.1.2</Version>
+    <AssemblyVersion>0.1.2.0</AssemblyVersion>
+    <FileVersion>0.1.2.0</FileVersion>
+    <InformationalVersion>0.1.2</InformationalVersion>
     <ApplicationIcon>Assets\Node.ico</ApplicationIcon>
     <UseWinUI>true</UseWinUI>
     <WindowsPackageType>None</WindowsPackageType>
@@ -30,4 +30,12 @@
     <Content Include="Assets\NodeIcon.png" CopyToOutputDirectory="PreserveNewest" />
     <Content Include="Assets\Node.ico" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
+  <Target Name="CopyWinUiResourcesToPublishDirectory" AfterTargets="Publish">
+    <ItemGroup>
+      <WinUiPublishResource Include="$(TargetDir)*.xbf" />
+      <WinUiPublishResource Include="$(TargetDir)$(AssemblyName).pri" />
+    </ItemGroup>
+    <Error Condition="'@(WinUiPublishResource)' == ''" Text="WinUI XAML publish resources were not generated." />
+    <Copy SourceFiles="@(WinUiPublishResource)" DestinationFolder="$(PublishDir)" SkipUnchangedFiles="true" />
+  </Target>
 </Project>

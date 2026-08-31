@@ -1,10 +1,13 @@
 using System.Diagnostics;
 using System.Text.Json;
+using Microsoft.UI.Input;
 using Microsoft.UI.Dispatching;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
+using Microsoft.UI.Xaml.Input;
 using Microsoft.Web.WebView2.Core;
 using Windows.Graphics;
+using Windows.UI.Core;
 
 namespace NodeApp;
 
@@ -126,9 +129,16 @@ public sealed partial class MainWindow : Window
         if (_selected is not null) _saveTimer.Start();
     }
 
-    private void PreviewToggle_Click(object sender, RoutedEventArgs e)
+    private void Editor_KeyDown(object sender, KeyRoutedEventArgs e)
     {
-        SetPreviewMode(!_previewing);
+        var controlDown = InputKeyboardSource
+            .GetKeyStateForCurrentThread(Windows.System.VirtualKey.Control)
+            .HasFlag(CoreVirtualKeyStates.Down);
+        if (e.Key != Windows.System.VirtualKey.Enter || !controlDown) return;
+
+        e.Handled = true;
+        SaveCurrent();
+        SetPreviewMode(true);
     }
 
     private void SetPreviewMode(bool preview)
@@ -136,7 +146,6 @@ public sealed partial class MainWindow : Window
         _previewing = preview;
         Editor.Visibility = _previewing ? Visibility.Collapsed : Visibility.Visible;
         MarkdownPreview.Visibility = _previewing ? Visibility.Visible : Visibility.Collapsed;
-        PreviewButton.Content = _previewing ? "편집" : "미리보기";
         if (_previewing) UpdateMarkdownPreview();
     }
 
@@ -169,7 +178,14 @@ public sealed partial class MainWindow : Window
         {
             using var message = JsonDocument.Parse(args.WebMessageAsJson);
             var root = message.RootElement;
-            if (!root.TryGetProperty("type", out var type) || type.GetString() != "update-section") return;
+            if (!root.TryGetProperty("type", out var type)) return;
+            if (type.GetString() == "begin-document-edit")
+            {
+                SetPreviewMode(false);
+                DispatcherQueue.TryEnqueue(() => Editor.Focus(FocusState.Programmatic));
+                return;
+            }
+            if (type.GetString() != "update-section") return;
             if (!root.TryGetProperty("index", out var indexValue) || !root.TryGetProperty("markdown", out var markdownValue)) return;
             var updated = MarkdownSectionService.ReplaceSection(Editor.Text, indexValue.GetInt32(), markdownValue.GetString() ?? "");
             if (updated == Editor.Text) { UpdateMarkdownPreview(); return; }

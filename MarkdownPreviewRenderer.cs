@@ -184,16 +184,19 @@ public static class MarkdownPreviewRenderer
               };
 
               const beginEditing = (details, sectionBody) => {
-                if (activeEditor) commitEditor();
+                if (activeEditor) {
+                  activeEditor.focus();
+                  return;
+                }
                 const index = Number(details.dataset.sectionIndex);
                 if (!Number.isInteger(index) || index >= sectionSources.length) return;
                 const editor = document.createElement('textarea');
                 editor.className = 'section-editor';
                 editor.value = sectionSources[index] || '';
-                editor.title = '영역 밖을 더블클릭하면 저장하고 편집을 종료합니다';
+                editor.title = 'Ctrl+Enter를 누르면 저장하고 편집을 종료합니다';
                 const exitHint = document.createElement('div');
                 exitHint.className = 'edit-exit-hint';
-                exitHint.textContent = '영역 밖을 더블클릭하면 저장하고 편집 종료';
+                exitHint.textContent = 'Ctrl+Enter · 저장하고 편집 종료';
                 details.classList.add('editing');
                 sectionBody.replaceChildren(editor, exitHint);
                 activeEditor = editor;
@@ -248,6 +251,14 @@ public static class MarkdownPreviewRenderer
                   (stack.length ? stack[stack.length - 1].body : root).appendChild(node);
                 }
               }
+              document.addEventListener('dblclick', event => {
+                if (activeEditor) return;
+                const element = event.target instanceof Element ? event.target : event.target.parentElement;
+                if (!element || element.closest('.md-summary,.fold-tools,a,button,input,textarea,select')) return;
+                event.preventDefault();
+                event.stopPropagation();
+                window.chrome.webview.postMessage({ type: 'begin-document-edit' });
+              });
               if (!sectionCount) return;
               const tools = document.createElement('nav');
               tools.className = 'fold-tools';
@@ -262,9 +273,6 @@ public static class MarkdownPreviewRenderer
               collapse.addEventListener('click', () => document.querySelectorAll('.md-section').forEach(section => section.open = false));
               tools.append(expand, collapse);
               root.prepend(tools);
-              document.addEventListener('dblclick', event => {
-                if (activeEditor && event.target !== activeEditor && !activeEditor.contains(event.target)) commitEditor();
-              }, true);
             })();
           </script>
         </body>
