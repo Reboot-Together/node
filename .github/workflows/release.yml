@@ -1,0 +1,90 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*.*.*"
+
+permissions:
+  contents: write
+
+jobs:
+  publish:
+    runs-on: windows-latest
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v6
+
+      - name: Set up .NET
+        uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: 8.0.x
+
+      - name: Read and validate version
+        shell: pwsh
+        run: |
+          $version = '${{ github.ref_name }}'.TrimStart('v', 'V')
+          $parsed = $null
+          if (-not [System.Version]::TryParse($version, [ref]$parsed) -or $version -notmatch '^\d+\.\d+\.\d+$') {
+            throw "Release tag must use vMAJOR.MINOR.PATCH: ${{ github.ref_name }}"
+          }
+          "NODE_VERSION=$version" | Out-File -FilePath $env:GITHUB_ENV -Append
+
+      - name: Restore
+        run: |
+          dotnet restore Node.csproj
+          dotnet restore Checks/Node.Checks.csproj
+
+      - name: Build application
+        run: dotnet build Node.csproj -c Release --no-restore
+
+      - name: Run checks
+        run: dotnet run --project Checks/Node.Checks.csproj -c Release --no-restore
+
+      - name: Publish self-contained Windows application
+        shell: pwsh
+        run: |
+          $publishDir = Join-Path $env:GITHUB_WORKSPACE "artifacts\Node-$env:NODE_VERSION-win-x64"
+          dotnet publish Node.csproj -c Release -r win-x64 --self-contained true `
+            -p:Version=$env:NODE_VERSION `
+            -p:AssemblyVersion="$env:NODE_VERSION.0" `
+            -p:FileVersion="$env:NODE_VERSION.0" `
+            -p:InformationalVersion=$env:NODE_VERSION `
+            -p:DebugType=None -p:DebugSymbols=false `
+            --output $publishDir
+
+          $localePattern = '^[a-z]{2,3}(?:-[A-Za-z0-9]+)+$'
+          Get-ChildItem -LiteralPath $publishDir -Directory |
+            Where-Object { $_.Name -match $localePattern -and $_.Name -notin @('ko-KR', 'en-US') } |
+            Remove-Item -Recurse -Force
+
+          "NODE_SOURCE_DIR=$publishDir" | Out-File -FilePath $env:GITHUB_ENV -Append
+          "NODE_OUTPUT_DIR=$(Join-Path $env:GITHUB_WORKSPACE 'artifacts')" | Out-File -FilePath $env:GITHUB_ENV -Append
+
+      - name: Build installer
+        shell: pwsh
+        run: |
+          $compiler = Join-Path ${env:ProgramFiles(x86)} 'Inno Setup 6\ISCC.exe'
+          if (-not (Test-Path -LiteralPath $compiler)) {
+            choco install innosetup --yes --no-progress
+          }
+          & $compiler "installer\Node.iss"
+          if ($LASTEXITCODE -ne 0) { throw "Inno Setup failed with exit code $LASTEXITCODE" }
+
+      - name: Create checksum
+        shell: pwsh
+        run: |
+          $installer = Get-Item "artifacts\Node-$env:NODE_VERSION-Setup-win-x64.exe"
+          $hash = (Get-FileHash -LiteralPath $installer.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
+          "$hash  $($installer.Name)" | Set-Content "artifacts\Node-$env:NODE_VERSION-SHA256.txt" -Encoding ascii
+
+      - name: Create GitHub release
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "${{ github.ref_name }}" `
+            "artifacts\Node-$env:NODE_VERSION-Setup-win-x64.exe" `
+            "artifacts\Node-$env:NODE_VERSION-SHA256.txt" `
+            --title "Node ${{ github.ref_name }}" `
+            --generate-notes

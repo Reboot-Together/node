@@ -1,0 +1,9 @@
+bin/
+obj/
+dist/
+artifacts/
+Checks/bin/
+Checks/obj/
+*.user
+*.suo
+.vs/
