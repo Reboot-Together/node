@@ -28,14 +28,20 @@ public sealed class NoteRepository
         .ToList();
 
     public NoteInfo Create(string? suggestedTitle = null, NoteMetadata? metadata = null)
+        => CreateInFolder(RootPath, suggestedTitle, metadata);
+
+    public NoteInfo CreateInFolder(string directory, string? suggestedTitle = null, NoteMetadata? metadata = null)
     {
-        var title = UniqueTitle(suggestedTitle ?? $"새 노트 {DateTime.Now:yyyy-MM-dd HHmm}");
-        return Save(Path.Combine(RootPath, SafeFileName(title) + ".md"), title, "", metadata ?? NoteMetadata.Manual);
+        var parent = ValidateDirectoryPath(directory);
+        var title = suggestedTitle ?? $"새 노트 {DateTime.Now:yyyy-MM-dd HHmm}";
+        return Save(Path.Combine(parent, SafeFileName(title) + ".md"), title, "", metadata ?? NoteMetadata.Manual);
     }
 
-    public NoteInfo Save(string? originalPath, string title, string body, NoteMetadata metadata)
+    public NoteInfo Save(string? originalPath, string title, string body, NoteMetadata metadata, string? previousTitle = null)
     {
-        title = UniqueTitle(MarkdownText.NormalizeTitle(title), originalPath);
+        title = MarkdownText.NormalizeTitle(title);
+        if (previousTitle is null || !title.Equals(MarkdownText.NormalizeTitle(previousTitle), StringComparison.OrdinalIgnoreCase))
+            title = UniqueTitle(title, originalPath);
         body = MarkdownText.NormalizeNewlines(body).Trim();
         var path = originalPath ?? Path.Combine(RootPath, SafeFileName(title) + ".md");
         metadata = metadata with { Created = metadata.Created == default ? DateTime.Today : metadata.Created };
@@ -173,8 +179,17 @@ public sealed class NoteRepository
         var raw = MarkdownText.NormalizeNewlines(File.ReadAllText(path));
         var (metadata, content) = Parse(raw, File.GetCreationTime(path));
         var title = MarkdownText.NormalizeTitle(metadata.Title ?? (Heading.Match(content) is { Success: true } heading ? heading.Groups[1].Value.Trim() : Path.GetFileNameWithoutExtension(path)));
-        content = Regex.Replace(content, "^#\\s+.+(?:\\r?\\n){0,2}", "", RegexOptions.Multiline).Trim();
+        content = RemoveSerializedTitleHeading(content, title);
         return new NoteInfo(title, path, content, File.GetLastWriteTime(path), metadata.ToMetadata());
+    }
+
+    private static string RemoveSerializedTitleHeading(string content, string title)
+    {
+        var match = Regex.Match(content, "\\A#\\s+([^\\n]+)(?:\\n{1,2}|\\z)");
+        if (!match.Success || !MarkdownText.NormalizeTitle(match.Groups[1].Value).Equals(title, StringComparison.Ordinal))
+            return content.Trim();
+
+        return content[match.Length..].Trim();
     }
 
     private string UniqueTitle(string title, string? originalPath = null)

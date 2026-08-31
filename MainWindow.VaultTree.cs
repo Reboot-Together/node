@@ -34,6 +34,7 @@ public sealed partial class MainWindow
         var menu = new MenuFlyout();
         if (item.IsFolder)
         {
+            menu.Items.Add(MenuItem("새 노트", ContextCreateNote_Click));
             menu.Items.Add(MenuItem("새 폴더", CreateFolder_Click));
             if (!item.IsRoot)
             {
@@ -50,8 +51,6 @@ public sealed partial class MainWindow
         }
         else
         {
-            menu.Items.Add(MenuItem("새 폴더", CreateFolder_Click));
-            menu.Items.Add(new MenuFlyoutSeparator());
             menu.Items.Add(MenuItem("이름 변경", RenameNote_Click));
             menu.Items.Add(MenuItem("복사본 만들기", DuplicateNote_Click));
             menu.Items.Add(MenuItem("폴더로 이동", MoveNote_Click));
@@ -62,6 +61,18 @@ public sealed partial class MainWindow
         }
 
         menu.ShowAt(element);
+        e.Handled = true;
+    }
+
+    private void NoteList_RightTapped(object sender, RightTappedRoutedEventArgs e)
+    {
+        _contextNote = null;
+        _contextFolder = _workspace.RootPath;
+
+        var menu = new MenuFlyout();
+        menu.Items.Add(MenuItem("새 노트", ContextCreateNote_Click));
+        menu.Items.Add(MenuItem("새 폴더", CreateFolder_Click));
+        menu.ShowAt(NoteList, e.GetPosition(NoteList));
         e.Handled = true;
     }
 

@@ -55,11 +55,10 @@ public sealed partial class MainWindow
             .ToList();
         if (notes.Count == 0) return;
 
-        var links = _linkService.Build(notes);
         var selectedTitle = _selected?.Title;
         var layout = _graphLayoutService.Calculate(
             notes,
-            links,
+            _noteLinks,
             GraphCanvas.Width,
             GraphCanvas.Height,
             selectedTitle);

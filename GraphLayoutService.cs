@@ -14,6 +14,10 @@ public sealed record GraphLayout(
 
 public sealed class GraphLayoutService
 {
+    private string? _cachedKey;
+    private Dictionary<string, GraphPoint> _cachedPoints = new(StringComparer.OrdinalIgnoreCase);
+    internal int SimulationRuns { get; private set; }
+
     public GraphLayout Calculate(
         IReadOnlyList<NoteInfo> notes,
         IReadOnlyDictionary<string, List<string>> links,
@@ -21,23 +25,35 @@ public sealed class GraphLayoutService
         double height,
         string? selectedTitle)
     {
-        var points = notes.ToDictionary(note => note.Title, note => InitialPoint(note.Title, width, height), StringComparer.OrdinalIgnoreCase);
-        var forces = notes.ToDictionary(note => note.Title, _ => new GraphPoint(0, 0), StringComparer.OrdinalIgnoreCase);
-        for (var step = 0; step < 140; step++)
+        var cacheKey = CreateCacheKey(notes, links, width, height);
+        Dictionary<string, GraphPoint> points;
+        if (_cachedKey == cacheKey)
         {
-            foreach (var title in forces.Keys.ToList()) forces[title] = new GraphPoint(0, 0);
-            for (var left = 0; left < notes.Count; left++)
-                for (var right = left + 1; right < notes.Count; right++)
-                    AddRepulsion(notes[left].Title, notes[right].Title, points, forces);
-            foreach (var (source, targets) in links)
-                foreach (var target in targets)
-                    AddAttraction(source, target, points, forces);
-            foreach (var title in points.Keys.ToList())
+            points = new Dictionary<string, GraphPoint>(_cachedPoints, StringComparer.OrdinalIgnoreCase);
+        }
+        else
+        {
+            points = notes.ToDictionary(note => note.Title, note => InitialPoint(note.Title, width, height), StringComparer.OrdinalIgnoreCase);
+            var forces = notes.ToDictionary(note => note.Title, _ => new GraphPoint(0, 0), StringComparer.OrdinalIgnoreCase);
+            for (var step = 0; step < 140; step++)
             {
-                var point = points[title];
-                var force = forces[title];
-                points[title] = new GraphPoint(Math.Clamp(point.X + force.X, 24, width - 24), Math.Clamp(point.Y + force.Y, 24, height - 24));
+                foreach (var title in forces.Keys.ToList()) forces[title] = new GraphPoint(0, 0);
+                for (var left = 0; left < notes.Count; left++)
+                    for (var right = left + 1; right < notes.Count; right++)
+                        AddRepulsion(notes[left].Title, notes[right].Title, points, forces);
+                foreach (var (source, targets) in links)
+                    foreach (var target in targets)
+                        AddAttraction(source, target, points, forces);
+                foreach (var title in points.Keys.ToList())
+                {
+                    var point = points[title];
+                    var force = forces[title];
+                    points[title] = new GraphPoint(Math.Clamp(point.X + force.X, 24, width - 24), Math.Clamp(point.Y + force.Y, 24, height - 24));
+                }
             }
+            _cachedKey = cacheKey;
+            _cachedPoints = new Dictionary<string, GraphPoint>(points, StringComparer.OrdinalIgnoreCase);
+            SimulationRuns++;
         }
 
         if (selectedTitle is not null && points.TryGetValue(selectedTitle, out var selectedPoint))
@@ -64,6 +80,21 @@ public sealed class GraphLayoutService
             }
 
         return new GraphLayout(points, links, degrees, selectedNeighbors);
+    }
+
+    private static string CreateCacheKey(
+        IReadOnlyList<NoteInfo> notes,
+        IReadOnlyDictionary<string, List<string>> links,
+        double width,
+        double height)
+    {
+        var nodes = string.Join("\u001f", notes.Select(note => note.Title).OrderBy(title => title, StringComparer.OrdinalIgnoreCase));
+        var edges = string.Join("\u001f", links
+            .OrderBy(pair => pair.Key, StringComparer.OrdinalIgnoreCase)
+            .SelectMany(pair => pair.Value
+                .OrderBy(target => target, StringComparer.OrdinalIgnoreCase)
+                .Select(target => $"{pair.Key}\u001e{target}")));
+        return $"{width:F2}\u001d{height:F2}\u001d{nodes}\u001d{edges}";
     }
 
     private static GraphPoint InitialPoint(string title, double width, double height)

@@ -37,7 +37,10 @@
             <Button Grid.Column="1" Content="↻" Style="{StaticResource QuietButton}" Padding="7,3" MinWidth="0" Click="Refresh_Click" />
           </Grid>
           <TextBox x:Name="SearchBox" Grid.Row="1" Style="{StaticResource Field}" PlaceholderText="⌕  제목, 본문 검색" TextChanged="Search_TextChanged" />
-          <ListView x:Name="NoteList" Grid.Row="2" Background="Transparent" BorderThickness="0" SelectionChanged="NoteList_SelectionChanged" SelectionMode="Single" CanDragItems="True" DragItemsStarting="NoteList_DragItemsStarting" ScrollViewer.VerticalScrollBarVisibility="Auto">
+          <ListView x:Name="NoteList" Grid.Row="2" Background="Transparent" BorderThickness="0" SelectionChanged="NoteList_SelectionChanged" SelectionMode="Single" CanDragItems="True" DragItemsStarting="NoteList_DragItemsStarting" RightTapped="NoteList_RightTapped" ScrollViewer.VerticalScrollBarVisibility="Auto">
+            <ListView.ItemContainerTransitions>
+              <TransitionCollection />
+            </ListView.ItemContainerTransitions>
             <ListView.ItemContainerStyle>
               <Style TargetType="ListViewItem">
                 <Setter Property="Padding" Value="0" />
@@ -79,18 +82,22 @@
           <Grid>
             <StackPanel Spacing="2">
               <TextBlock Text="NOTE" Foreground="{StaticResource Positive}" FontFamily="Cascadia Mono" FontSize="9" FontWeight="SemiBold" />
-              <TextBox x:Name="TitleBox" Background="Transparent" BorderThickness="0" Padding="0,3" FontSize="22" FontWeight="SemiBold" PlaceholderText="무엇을 기록할까요?" TextChanged="Editor_TextChanged" />
+              <TextBox x:Name="TitleBox" Background="Transparent" BorderThickness="0" Padding="0,3" FontSize="22" FontWeight="SemiBold" PlaceholderText="무엇을 기록할까요?" TextChanged="NoteField_TextChanged" />
             </StackPanel>
           </Grid>
           <Border Grid.Row="1" BorderBrush="{StaticResource CardBorder}" BorderThickness="0,0,0,1" Padding="0,0,0,12">
             <Grid ColumnDefinitions="*,*,*" ColumnSpacing="7">
-              <StackPanel Spacing="4"><TextBlock Text="분류" Foreground="{StaticResource MutedText}" FontSize="9" /><TextBox x:Name="CategoryBox" Style="{StaticResource Field}" PlaceholderText="Database" TextChanged="Editor_TextChanged" /></StackPanel>
-              <StackPanel Grid.Column="1" Spacing="4"><TextBlock Text="출처" Foreground="{StaticResource MutedText}" FontSize="9" /><TextBox x:Name="SourceBox" Style="{StaticResource Field}" PlaceholderText="Manual" TextChanged="Editor_TextChanged" /></StackPanel>
-              <StackPanel Grid.Column="2" Spacing="4"><TextBlock Text="유형" Foreground="{StaticResource MutedText}" FontSize="9" /><TextBox x:Name="TypeBox" Style="{StaticResource Field}" PlaceholderText="Study" TextChanged="Editor_TextChanged" /></StackPanel>
+              <StackPanel Spacing="4"><TextBlock Text="분류" Foreground="{StaticResource MutedText}" FontSize="9" /><TextBox x:Name="CategoryBox" Style="{StaticResource Field}" PlaceholderText="Database" TextChanged="NoteField_TextChanged" /></StackPanel>
+              <StackPanel Grid.Column="1" Spacing="4"><TextBlock Text="출처" Foreground="{StaticResource MutedText}" FontSize="9" /><TextBox x:Name="SourceBox" Style="{StaticResource Field}" PlaceholderText="Manual" TextChanged="NoteField_TextChanged" /></StackPanel>
+              <StackPanel Grid.Column="2" Spacing="4"><TextBlock Text="유형" Foreground="{StaticResource MutedText}" FontSize="9" /><TextBox x:Name="TypeBox" Style="{StaticResource Field}" PlaceholderText="Study" TextChanged="NoteField_TextChanged" /></StackPanel>
             </Grid>
           </Border>
           <Grid Grid.Row="2">
-            <TextBox x:Name="Editor" Background="Transparent" BorderThickness="0" Padding="0,5" AcceptsReturn="True" TextWrapping="Wrap" ScrollViewer.VerticalScrollBarVisibility="Auto" FontFamily="Cascadia Mono" FontSize="12" PlaceholderText="Markdown으로 자유롭게 쓰세요.&#x0a;&#x0a;[[다른 노트 제목]]을 입력하면 자동으로 연결됩니다." TextChanged="Editor_TextChanged" KeyDown="Editor_KeyDown" />
+            <TextBox x:Name="Editor" Background="Transparent" BorderThickness="0" Padding="0,5" AcceptsReturn="True" TextWrapping="Wrap" ScrollViewer.VerticalScrollBarVisibility="Auto" FontFamily="Cascadia Mono" FontSize="12" PlaceholderText="Markdown으로 자유롭게 쓰세요.&#x0a;&#x0a;[[다른 노트 제목]]을 입력하면 자동으로 연결됩니다." TextChanged="Editor_TextChanged" KeyDown="Editor_KeyDown" LostFocus="Editor_LostFocus">
+              <TextBox.KeyboardAccelerators>
+                <KeyboardAccelerator Key="Enter" Modifiers="Control" Invoked="Editor_SaveAndExit_Invoked" />
+              </TextBox.KeyboardAccelerators>
+            </TextBox>
             <WebView2 x:Name="MarkdownPreview" Visibility="Collapsed" DefaultBackgroundColor="#FFFFFF" NavigationStarting="MarkdownPreview_NavigationStarting" />
           </Grid>
           <Border Grid.Row="3" BorderBrush="{StaticResource CardBorder}" BorderThickness="0,1,0,0" Padding="0,9,0,0">

@@ -10,6 +10,9 @@ public sealed partial class MainWindow
 {
     private NoteInfo? _contextNote;
 
+    private void ContextCreateNote_Click(object sender, RoutedEventArgs e) =>
+        NewNote(_contextFolder ?? _workspace.RootPath);
+
     private async void CreateFolder_Click(object sender, RoutedEventArgs e)
     {
         var parent = _contextFolder ?? (_contextNote is null ? null : Path.GetDirectoryName(_contextNote.Path));
@@ -22,7 +25,7 @@ public sealed partial class MainWindow
             var folder = _repository.CreateFolder(parent, name);
             _expandedFolders.Add(parent);
             _expandedFolders.Add(folder);
-            RefreshNotes();
+            RefreshFolders();
         }
         catch (Exception exception)
         {

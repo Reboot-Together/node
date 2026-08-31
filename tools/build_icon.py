@@ -3,32 +3,81 @@ from __future__ import annotations
 import argparse
 from pathlib import Path
 
-from PIL import Image, ImageDraw, ImageFilter
+from PIL import Image, ImageDraw
 
 
-def build_icon(source_path: Path, output_directory: Path) -> None:
+CANVAS_SIZE = 1024
+SUPERSAMPLING = 4
+
+
+def build_symbol() -> Image.Image:
+    size = CANVAS_SIZE * SUPERSAMPLING
+    icon = Image.new("RGBA", (size, size), (0, 0, 0, 0))
+    draw = ImageDraw.Draw(icon)
+
+    nodes = {
+        "top": (505, 122),
+        "upper_left": (250, 270),
+        "upper_right": (760, 245),
+        "center": (500, 466),
+        "left": (142, 548),
+        "right": (850, 525),
+        "lower_left": (310, 760),
+        "lower_right": (690, 785),
+        "bottom": (500, 914),
+    }
+    edges = (
+        ("top", "upper_left"),
+        ("top", "upper_right"),
+        ("top", "center"),
+        ("upper_left", "center"),
+        ("upper_left", "left"),
+        ("upper_left", "upper_right"),
+        ("upper_right", "center"),
+        ("upper_right", "right"),
+        ("left", "center"),
+        ("left", "lower_left"),
+        ("center", "right"),
+        ("center", "lower_left"),
+        ("center", "lower_right"),
+        ("right", "lower_right"),
+        ("lower_left", "lower_right"),
+        ("lower_left", "bottom"),
+        ("lower_right", "bottom"),
+    )
+
+    def scaled(point: tuple[int, int]) -> tuple[int, int]:
+        return point[0] * SUPERSAMPLING, point[1] * SUPERSAMPLING
+
+    white = (255, 255, 255, 255)
+    for source, target in edges:
+        draw.line(
+            (scaled(nodes[source]), scaled(nodes[target])),
+            fill=white,
+            width=38 * SUPERSAMPLING,
+        )
+
+    for name, point in nodes.items():
+        radius = 59 if name == "center" else 47
+        x, y = scaled(point)
+        radius *= SUPERSAMPLING
+        draw.ellipse((x - radius, y - radius, x + radius, y + radius), fill=white)
+
+    return icon.resize((CANVAS_SIZE, CANVAS_SIZE), Image.Resampling.LANCZOS)
+
+
+def build_icon(output_directory: Path) -> None:
     output_directory.mkdir(parents=True, exist_ok=True)
-    source = Image.open(source_path).convert("L")
-    side = min(source.size)
-    left = (source.width - side) // 2
-    top = (source.height - side) // 2
-    source = source.crop((left, top, left + side, top + side)).resize((1024, 1024), Image.Resampling.LANCZOS)
+    icon = build_symbol()
 
-    # Preserve antialiased symbol edges while removing generated lighting and texture.
-    symbol_mask = source.point(lambda value: max(0, min(255, round((value - 145) * 3.4))))
-    symbol_mask = symbol_mask.filter(ImageFilter.GaussianBlur(0.35))
-
-    tile_mask = Image.new("L", (1024, 1024), 0)
-    ImageDraw.Draw(tile_mask).rounded_rectangle((20, 20, 1004, 1004), radius=218, fill=255)
-    symbol_mask = Image.composite(symbol_mask, Image.new("L", symbol_mask.size, 0), tile_mask)
-
-    icon = Image.new("RGBA", (1024, 1024), (21, 21, 21, 0))
-    icon.paste((21, 21, 21, 255), (0, 0), tile_mask)
-    icon.paste((255, 255, 255, 255), (0, 0), symbol_mask)
-
+    icon.save(output_directory / "NodeIconSource.png", optimize=True)
     icon.save(output_directory / "NodeIcon.png", optimize=True)
-    icon.resize((150, 150), Image.Resampling.LANCZOS).save(output_directory / "NodeIcon-150.png", optimize=True)
-    icon.resize((44, 44), Image.Resampling.LANCZOS).save(output_directory / "NodeIcon-44.png", optimize=True)
+    icon.resize((150, 150), Image.Resampling.LANCZOS).save(
+        output_directory / "NodeIcon-150.png", optimize=True
+    )
+    icon.resize((44, 44), Image.Resampling.LANCZOS).save(
+        output_directory / "NodeIcon-44.png", optimize=True
+    )
     icon.save(
         output_directory / "Node.ico",
         format="ICO",
@@ -37,8 +86,9 @@ def build_icon(source_path: Path, output_directory: Path) -> None:
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Build reproducible Node Windows icon assets.")
-    parser.add_argument("source", type=Path)
+    parser = argparse.ArgumentParser(
+        description="Build the transparent white Node network icon assets."
+    )
     parser.add_argument("output_directory", type=Path)
     arguments = parser.parse_args()
-    build_icon(arguments.source, arguments.output_directory)
+    build_icon(arguments.output_directory)

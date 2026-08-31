@@ -6,6 +6,7 @@ using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Input;
 using Microsoft.Web.WebView2.Core;
+using Windows.ApplicationModel.DataTransfer;
 using Windows.Graphics;
 using Windows.UI.Core;
 
@@ -16,10 +17,13 @@ public sealed partial class MainWindow : Window
     private readonly WorkspaceService _workspace = new();
     private readonly NoteRepository _repository;
     private readonly NoteLinkService _linkService = new();
+    private readonly NoteImageService _imageService = new();
     private readonly VaultTreeService _vaultTreeService = new();
     private readonly DispatcherQueueTimer _saveTimer;
     private List<NoteInfo> _notes = [];
+    private IReadOnlyList<string> _folders = [];
     private IReadOnlyList<VaultItem> _vaultItems = [];
+    private IReadOnlyDictionary<string, List<string>> _noteLinks = new Dictionary<string, List<string>>(StringComparer.OrdinalIgnoreCase);
     private readonly HashSet<string> _expandedFolders = new(StringComparer.OrdinalIgnoreCase);
     private NoteInfo? _selected;
     private bool _loading;
@@ -47,25 +51,36 @@ public sealed partial class MainWindow : Window
     private void RefreshNotes()
     {
         _notes = _repository.Load();
+        _folders = _vaultTreeService.LoadFolders(_workspace.RootPath);
+        RefreshLinkIndex();
         StoragePathText.Text = $"저장 위치: {_workspace.RootPath}";
         ApplySearch();
-        DrawGraph();
-        UpdateBacklinks();
+    }
+
+    private void RefreshLinkIndex() => _noteLinks = _linkService.Build(_notes);
+
+    private void RefreshFolders()
+    {
+        _folders = _vaultTreeService.LoadFolders(_workspace.RootPath);
+        ApplySearch();
     }
 
     private void ApplySearch()
     {
         var query = SearchBox?.Text.Trim() ?? "";
-        _vaultItems = _vaultTreeService.Build(_workspace.RootPath, _notes, _expandedFolders, query);
+        _vaultItems = _vaultTreeService.Build(_workspace.RootPath, _notes, _folders, _expandedFolders, query);
         NoteList.ItemsSource = _vaultItems;
         if (_selected is not null)
             NoteList.SelectedItem = _vaultItems.FirstOrDefault(item => item.Note?.Path == _selected.Path);
     }
 
-    private void NewNote()
+    private void NewNote(string? parentFolder = null)
     {
         SaveCurrent();
-        var note = _repository.Create();
+        var note = parentFolder is null
+            ? _repository.Create()
+            : _repository.CreateInFolder(parentFolder);
+        if (parentFolder is not null) _expandedFolders.Add(parentFolder);
         RefreshNotes();
         Select(note, openEditor: true);
         DispatcherQueue.TryEnqueue(() => Editor.Focus(FocusState.Programmatic));
@@ -80,11 +95,39 @@ public sealed partial class MainWindow : Window
         SourceBox.Text = note.Metadata.Source;
         TypeBox.Text = note.Metadata.Type;
         Editor.Text = note.Body;
-        NoteList.SelectedItem = _vaultItems.FirstOrDefault(item => item.Note?.Path == note.Path);
+        RevealNoteInTree(note);
         _loading = false;
         SetPreviewMode(!openEditor);
         UpdateBacklinks();
         DrawGraph();
+    }
+
+    private void RevealNoteInTree(NoteInfo note)
+    {
+        var treeChanged = false;
+        if (!string.IsNullOrWhiteSpace(SearchBox.Text))
+        {
+            SearchBox.Text = "";
+            treeChanged = true;
+        }
+        foreach (var folder in _vaultTreeService.AncestorFolders(_workspace.RootPath, note.Path))
+            treeChanged |= _expandedFolders.Add(folder);
+
+        var item = treeChanged
+            ? null
+            : _vaultItems.FirstOrDefault(candidate => candidate.Note?.Path == note.Path);
+        if (item is null)
+        {
+            ApplySearch();
+            item = _vaultItems.FirstOrDefault(candidate => candidate.Note?.Path == note.Path);
+        }
+        if (item is null) return;
+
+        NoteList.SelectedItem = item;
+        DispatcherQueue.TryEnqueue(() =>
+        {
+            if (_selected?.Path == note.Path) NoteList.ScrollIntoView(item);
+        });
     }
 
     private NoteMetadata MetadataFromEditor() => new(
@@ -96,15 +139,41 @@ public sealed partial class MainWindow : Window
     private void SaveCurrent()
     {
         if (_loading || _selected is null) return;
+        _saveTimer.Stop();
+        var previous = _selected;
         var metadata = MetadataFromEditor();
-        _selected = _repository.Save(_selected.Path, TitleBox.Text, Editor.Text, metadata);
+        var title = MarkdownText.NormalizeTitle(TitleBox.Text);
+        var body = MarkdownText.NormalizeNewlines(Editor.Text).Trim();
+        if (TitleBox.Text != title)
+        {
+            _loading = true;
+            TitleBox.Text = title;
+            _loading = false;
+        }
+        if (previous.Title == title && previous.Body == body && previous.Metadata == metadata) return;
+
+        var linksChanged = !_linkService.ExtractTargets(previous.Body).SetEquals(_linkService.ExtractTargets(body));
+        _selected = _repository.Save(previous.Path, title, body, metadata, previous.Title);
+        var noteIndex = _notes.FindIndex(note => note.Path.Equals(previous.Path, StringComparison.OrdinalIgnoreCase));
+        if (noteIndex >= 0) _notes[noteIndex] = _selected;
+        else _notes.Add(_selected);
+
         if (TitleBox.Text != _selected.Title)
         {
             _loading = true;
             TitleBox.Text = _selected.Title;
             _loading = false;
         }
-        RefreshNotes();
+
+        var titleChanged = !previous.Title.Equals(_selected.Title, StringComparison.Ordinal);
+        var metadataChanged = previous.Metadata != _selected.Metadata;
+        if (titleChanged || metadataChanged) ApplySearch();
+        if (titleChanged || linksChanged)
+        {
+            RefreshLinkIndex();
+            UpdateBacklinks();
+        }
+        if (titleChanged || linksChanged || metadataChanged) DrawGraph();
     }
 
     private void OpenDailyNote()
@@ -125,18 +194,74 @@ public sealed partial class MainWindow : Window
     private void Editor_TextChanged(object sender, TextChangedEventArgs e)
     {
         if (_loading) return;
-        if (_previewing) UpdateMarkdownPreview();
         if (_selected is not null) _saveTimer.Start();
     }
 
-    private void Editor_KeyDown(object sender, KeyRoutedEventArgs e)
+    private void NoteField_TextChanged(object sender, TextChangedEventArgs e)
     {
-        var controlDown = InputKeyboardSource
-            .GetKeyStateForCurrentThread(Windows.System.VirtualKey.Control)
-            .HasFlag(CoreVirtualKeyStates.Down);
+        if (!_loading && _selected is not null) _saveTimer.Start();
+    }
+
+    private async void Editor_KeyDown(object sender, KeyRoutedEventArgs e)
+    {
+        var controlDown = IsKeyDown(Windows.System.VirtualKey.Control)
+            || IsKeyDown(Windows.System.VirtualKey.LeftControl)
+            || IsKeyDown(Windows.System.VirtualKey.RightControl);
+
+        if (e.Key == Windows.System.VirtualKey.V && controlDown)
+        {
+            DataPackageView? clipboard = null;
+            try { clipboard = Clipboard.GetContent(); }
+            catch { }
+            if (clipboard?.Contains(StandardDataFormats.Bitmap) == true)
+            {
+                e.Handled = true;
+                try
+                {
+                    var bitmap = await clipboard.GetBitmapAsync();
+                    var relativePath = await _imageService.SavePngAsync(_workspace.RootPath, bitmap);
+                    InsertAtEditorSelection($"![[{relativePath}]]");
+                    Editor.Focus(FocusState.Programmatic);
+                }
+                catch (Exception exception)
+                {
+                    await ShowMessage("이미지를 붙여넣을 수 없음", $"클립보드 이미지를 저장하지 못했습니다.\n\n{exception.Message}");
+                }
+                return;
+            }
+        }
+
         if (e.Key != Windows.System.VirtualKey.Enter || !controlDown) return;
 
         e.Handled = true;
+        SaveAndExitEditor();
+    }
+
+    private void InsertAtEditorSelection(string markdown)
+    {
+        var start = Editor.SelectionStart;
+        var length = Editor.SelectionLength;
+        Editor.Text = Editor.Text.Remove(start, length).Insert(start, markdown);
+        Editor.SelectionStart = start + markdown.Length;
+        Editor.SelectionLength = 0;
+    }
+
+    private void Editor_SaveAndExit_Invoked(KeyboardAccelerator sender, KeyboardAcceleratorInvokedEventArgs args)
+    {
+        args.Handled = true;
+        SaveAndExitEditor();
+    }
+
+    private void Editor_LostFocus(object sender, RoutedEventArgs e) => SaveAndExitEditor();
+
+    private static bool IsKeyDown(Windows.System.VirtualKey key) => InputKeyboardSource
+        .GetKeyStateForCurrentThread(key)
+        .HasFlag(CoreVirtualKeyStates.Down);
+
+    private void SaveAndExitEditor()
+    {
+        if (_previewing) return;
+        _saveTimer.Stop();
         SaveCurrent();
         SetPreviewMode(true);
     }
@@ -183,14 +308,7 @@ public sealed partial class MainWindow : Window
             {
                 SetPreviewMode(false);
                 DispatcherQueue.TryEnqueue(() => Editor.Focus(FocusState.Programmatic));
-                return;
             }
-            if (type.GetString() != "update-section") return;
-            if (!root.TryGetProperty("index", out var indexValue) || !root.TryGetProperty("markdown", out var markdownValue)) return;
-            var updated = MarkdownSectionService.ReplaceSection(Editor.Text, indexValue.GetInt32(), markdownValue.GetString() ?? "");
-            if (updated == Editor.Text) { UpdateMarkdownPreview(); return; }
-            Editor.Text = updated;
-            SaveCurrent();
         }
         catch { }
     }
@@ -213,17 +331,24 @@ public sealed partial class MainWindow : Window
             Process.Start(new ProcessStartInfo { FileName = uri.AbsoluteUri, UseShellExecute = true });
         }
     }
-    private void Search_TextChanged(object sender, TextChangedEventArgs e) => ApplySearch();
+    private void Search_TextChanged(object sender, TextChangedEventArgs e) { if (!_loading) ApplySearch(); }
     private void NewNote_Click(object sender, RoutedEventArgs e) => NewNote();
     private void DailyNote_Click(object sender, RoutedEventArgs e) => OpenDailyNote();
-    private void Refresh_Click(object sender, RoutedEventArgs e) { SaveCurrent(); RefreshNotes(); }
+    private void Refresh_Click(object sender, RoutedEventArgs e)
+    {
+        var selectedPath = _selected?.Path;
+        SaveCurrent();
+        RefreshNotes();
+        var selected = _notes.FirstOrDefault(note => note.Path.Equals(selectedPath, StringComparison.OrdinalIgnoreCase));
+        if (selected is not null) Select(selected);
+        else if (_notes.Count > 0) Select(_notes[0]);
+    }
     private void NoteList_SelectionChanged(object sender, SelectionChangedEventArgs e) { if (!_loading && NoteList.SelectedItem is VaultItem { Note: NoteInfo note } && note.Path != _selected?.Path) { SaveCurrent(); Select(note); } }
     private void BacklinkList_SelectionChanged(object sender, SelectionChangedEventArgs e) { if (BacklinkList.SelectedItem is NoteInfo note && note.Path != _selected?.Path) { SaveCurrent(); Select(note); } }
     private void UpdateBacklinks()
     {
         if (_selected is null) { BacklinkTitle.Text = "이 노트를 언급한 노트"; BacklinkList.ItemsSource = Array.Empty<NoteInfo>(); return; }
-        var links = _linkService.Build(_notes);
-        var backlinks = _notes.Where(note => links.TryGetValue(note.Title, out var targets) && targets.Contains(_selected.Title, StringComparer.OrdinalIgnoreCase)).ToList();
+        var backlinks = _notes.Where(note => _noteLinks.TryGetValue(note.Title, out var targets) && targets.Contains(_selected.Title, StringComparer.OrdinalIgnoreCase)).ToList();
         BacklinkTitle.Text = $"이 노트를 언급한 노트 ({backlinks.Count})";
         BacklinkList.ItemsSource = backlinks;
     }
