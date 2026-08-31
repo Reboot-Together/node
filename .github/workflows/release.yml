@@ -1,9 +1,12 @@
 name: Release
 
 on:
-  push:
-    tags:
-      - "v*.*.*"
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "배포할 버전 (예: 0.1.1)"
+        required: true
+        type: string
 
 permissions:
   contents: write
@@ -23,12 +26,13 @@ jobs:
       - name: Read and validate version
         shell: pwsh
         run: |
-          $version = '${{ github.ref_name }}'.TrimStart('v', 'V')
+          $version = '${{ inputs.version }}'.Trim().TrimStart('v', 'V')
           $parsed = $null
           if (-not [System.Version]::TryParse($version, [ref]$parsed) -or $version -notmatch '^\d+\.\d+\.\d+$') {
-            throw "Release tag must use vMAJOR.MINOR.PATCH: ${{ github.ref_name }}"
+            throw "Version must use MAJOR.MINOR.PATCH: $version"
           }
           "NODE_VERSION=$version" | Out-File -FilePath $env:GITHUB_ENV -Append
+          "NODE_TAG=v$version" | Out-File -FilePath $env:GITHUB_ENV -Append
 
       - name: Restore
         run: |
@@ -83,8 +87,9 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh release create "${{ github.ref_name }}" `
+          gh release create "$env:NODE_TAG" `
             "artifacts\Node-$env:NODE_VERSION-Setup-win-x64.exe" `
             "artifacts\Node-$env:NODE_VERSION-SHA256.txt" `
-            --title "Node ${{ github.ref_name }}" `
+            --target "${{ github.sha }}" `
+            --title "Node $env:NODE_TAG" `
             --generate-notes
