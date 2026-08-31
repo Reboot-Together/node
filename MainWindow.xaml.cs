@@ -171,7 +171,7 @@ public sealed partial class MainWindow : Window
             var root = message.RootElement;
             if (!root.TryGetProperty("type", out var type) || type.GetString() != "update-section") return;
             if (!root.TryGetProperty("index", out var indexValue) || !root.TryGetProperty("markdown", out var markdownValue)) return;
-            var updated = MarkdownSectionService.ReplaceBody(Editor.Text, indexValue.GetInt32(), markdownValue.GetString() ?? "");
+            var updated = MarkdownSectionService.ReplaceSection(Editor.Text, indexValue.GetInt32(), markdownValue.GetString() ?? "");
             if (updated == Editor.Text) { UpdateMarkdownPreview(); return; }
             Editor.Text = updated;
             SaveCurrent();

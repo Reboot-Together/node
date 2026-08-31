@@ -20,7 +20,7 @@ public static class MarkdownPreviewRenderer
         body = Regex.Replace(body, "\\s+on[a-z]+\\s*=\\s*(['\"]).*?\\1", "", RegexOptions.IgnoreCase | RegexOptions.Singleline);
         body = Regex.Replace(body, "href=(['\"])javascript:.*?\\1", "href=\"#\"", RegexOptions.IgnoreCase);
         body = Regex.Replace(body, "href=\"(?![a-z]+:|#)([^\"]+?)(?:\\.md)?(?:#[^\"]*)?\"", match => $"href=\"node-note://note/{Uri.EscapeDataString(WebUtility.HtmlDecode(match.Groups[1].Value).Replace("%20", " "))}\"");
-        return HtmlShell(body, MarkdownSectionService.ExtractBodies(markdown));
+        return HtmlShell(body, MarkdownSectionService.ExtractSections(markdown));
     }
 
     private static string RenderBody(string markdown, string vaultPath, Func<string, string?>? resolveNote, int depth)
@@ -158,7 +158,8 @@ public static class MarkdownPreviewRenderer
             .md-section>.md-summary>h1,.md-section>.md-summary>h2,.md-section>.md-summary>h3,.md-section>.md-summary>h4,.md-section>.md-summary>h5,.md-section>.md-summary>h6{flex:1;margin:0;padding:7px 0;border:0}.md-section[data-level='1']>.md-summary>h1{font-size:22px}.md-section[data-level='2']>.md-summary>h2{font-size:18px}.md-section[data-level='3']>.md-summary>h3{font-size:15px}.md-section[data-level='4']>.md-summary>h4,.md-section[data-level='5']>.md-summary>h5,.md-section[data-level='6']>.md-summary>h6{font-size:13px}
             .md-section>.md-section-body{padding:11px 0 15px 21px}.md-section>.md-section-body>.md-section{border-bottom:0;border-top:1px solid #f0f0ed}.md-section>.md-section-body>:last-child{margin-bottom:0}
             .md-section>.md-summary>h1,.md-section>.md-summary>h2,.md-section>.md-summary>h3,.md-section>.md-summary>h4,.md-section>.md-summary>h5,.md-section>.md-summary>h6{cursor:text}
-            .section-editor{display:block;width:100%;min-height:150px;margin:2px 0 7px;padding:13px 14px;resize:vertical;border:1px solid #c9c9c4;border-radius:8px;outline:0;background:#fff;color:#202123;font:12px/1.65 'Cascadia Mono','Consolas',monospace;white-space:pre-wrap}.section-editor:focus{border-color:#8b8b85;box-shadow:0 0 0 2px rgba(23,23,23,.08)}
+            .md-section.editing>.md-summary{display:none}.md-section.editing>.md-section-body{padding:8px 0 15px}
+            .section-editor{display:block;width:100%;height:auto;min-height:48px;margin:2px 0 7px;padding:13px 14px;resize:none;overflow:hidden;border:1px solid #c9c9c4;border-radius:8px;outline:0;background:#fff;color:#202123;font:12px/1.65 'Cascadia Mono','Consolas',monospace;white-space:pre-wrap}.section-editor:focus{border-color:#8b8b85;box-shadow:0 0 0 2px rgba(23,23,23,.08)}
             .edit-exit-hint{margin:7px 2px 1px;color:#8a8a85;font-size:10px;text-align:right;user-select:none}
             @media(max-width:700px){body{padding:18px 20px 56px}table{font-size:12px}th,td{padding:7px 6px}.md-section>.md-section-body{padding-left:17px} }
           </style>
@@ -193,9 +194,17 @@ public static class MarkdownPreviewRenderer
                 const exitHint = document.createElement('div');
                 exitHint.className = 'edit-exit-hint';
                 exitHint.textContent = '영역 밖을 더블클릭하면 저장하고 편집 종료';
+                details.classList.add('editing');
                 sectionBody.replaceChildren(editor, exitHint);
                 activeEditor = editor;
                 activeSection = details;
+                const fitEditorToContent = () => {
+                  editor.style.height = '0px';
+                  editor.style.height = `${Math.max(48, editor.scrollHeight + 2)}px`;
+                };
+                editor.addEventListener('input', fitEditorToContent);
+                window.addEventListener('resize', fitEditorToContent);
+                requestAnimationFrame(fitEditorToContent);
                 editor.focus();
                 editor.setSelectionRange(editor.value.length, editor.value.length);
                 editor.addEventListener('keydown', event => {

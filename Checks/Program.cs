@@ -128,15 +128,16 @@ Recall = TP / (TP + FN)
     if (crReloaded.Title != "제목 정규화" || crReloaded.Body.Contains('\r') || !crReloaded.Body.Contains("\n\n| 항목")) throw new Exception("Markdown 저장 줄바꿈 정규화 실패");
 
     var sectionMarkdown = "## 첫 구역\n\n첫 본문\n\n### 하위 구역\n\n하위 본문\n\n## 둘째 구역\n\n둘째 본문";
-    var sectionBodies = MarkdownSectionService.ExtractBodies(sectionMarkdown);
-    if (sectionBodies.Count != 3 || sectionBodies[0] != "첫 본문\n\n### 하위 구역\n\n하위 본문" || sectionBodies[1] != "하위 본문") throw new Exception("하위 제목을 포함한 편집 구역 분석 실패");
+    var sections = MarkdownSectionService.ExtractSections(sectionMarkdown);
+    if (sections.Count != 3 || sections[0] != "## 첫 구역\n\n첫 본문\n\n### 하위 구역\n\n하위 본문" || sections[1] != "### 하위 구역\n\n하위 본문") throw new Exception("제목과 하위 항목을 포함한 편집 구역 분석 실패");
     var sectionRender = MarkdownPreviewRenderer.Render(sectionMarkdown, root);
     if (!sectionRender.Contains("document.addEventListener('dblclick'") || sectionRender.Contains("document.addEventListener('pointerdown'")) throw new Exception("편집 영역 밖 더블클릭 종료 연결 실패");
     if (!sectionRender.Contains("heading.addEventListener('dblclick'") || sectionRender.Contains("sectionBody.addEventListener('dblclick'")) throw new Exception("제목 더블클릭 편집 진입 연결 실패");
-    var replacedSection = MarkdownSectionService.ReplaceBody(sectionMarkdown, 1, "수정된 하위 본문\n\n- 항목");
-    if (!replacedSection.Contains("### 하위 구역\n수정된 하위 본문\n\n- 항목\n## 둘째 구역") || !replacedSection.Contains("첫 본문")) throw new Exception("제목별 본문 교체 실패");
-    var replacedParentSection = MarkdownSectionService.ReplaceBody(sectionMarkdown, 0, "새 본문\n\n### 새 하위 구역\n\n새 하위 본문");
-    if (!replacedParentSection.Contains("## 첫 구역\n새 본문\n\n### 새 하위 구역\n\n새 하위 본문\n## 둘째 구역") || replacedParentSection.Contains("하위 본문\n\n## 둘째 구역")) throw new Exception("상위 제목에서 하위 항목 일괄 편집 실패");
+    if (!sectionRender.Contains("editor.addEventListener('input', fitEditorToContent)") || !sectionRender.Contains("editor.scrollHeight + 2") || !sectionRender.Contains("resize:none;overflow:hidden")) throw new Exception("편집창 내용 기반 자동 높이 조절 연결 실패");
+    var replacedSection = MarkdownSectionService.ReplaceSection(sectionMarkdown, 1, "### 수정된 하위 제목\n\n수정된 하위 본문\n\n- 항목");
+    if (!replacedSection.Contains("### 수정된 하위 제목\n\n수정된 하위 본문\n\n- 항목\n## 둘째 구역") || replacedSection.Contains("### 하위 구역") || !replacedSection.Contains("첫 본문")) throw new Exception("제목을 포함한 구역 교체 실패");
+    var replacedParentSection = MarkdownSectionService.ReplaceSection(sectionMarkdown, 0, "## 바뀐 첫 구역\n\n새 본문\n\n### 새 하위 구역\n\n새 하위 본문");
+    if (!replacedParentSection.Contains("## 바뀐 첫 구역\n\n새 본문\n\n### 새 하위 구역\n\n새 하위 본문\n## 둘째 구역") || replacedParentSection.Contains("## 첫 구역") || replacedParentSection.Contains("하위 본문\n\n## 둘째 구역")) throw new Exception("상위 제목과 하위 항목 일괄 편집 실패");
     if (!UpdateService.TryParseVersion("v0.1.0", out var parsedVersion) || parsedVersion != new Version(0, 1, 0) || UpdateService.TryParseVersion("latest", out _)) throw new Exception("업데이트 버전 분석 실패");
     Console.WriteLine("Node checks passed.");
 }

@@ -4,26 +4,26 @@ namespace NodeApp;
 
 public static class MarkdownSectionService
 {
-    public static IReadOnlyList<string> ExtractBodies(string markdown)
+    public static IReadOnlyList<string> ExtractSections(string markdown)
     {
         var lines = MarkdownText.NormalizeNewlines(markdown).Split('\n');
         var headings = HeadingLines(lines);
         var sections = new List<string>(headings.Count);
         for (var index = 0; index < headings.Count; index++)
         {
-            var start = headings[index].Line + 1;
+            var start = headings[index].Line;
             var end = SectionEnd(headings, index, lines.Length);
             sections.Add(string.Join("\n", lines[start..end]).Trim('\n'));
         }
         return sections;
     }
 
-    public static string ReplaceBody(string markdown, int sectionIndex, string replacement)
+    public static string ReplaceSection(string markdown, int sectionIndex, string replacement)
     {
         var lines = MarkdownText.NormalizeNewlines(markdown).Split('\n');
         var headings = HeadingLines(lines);
         if (sectionIndex < 0 || sectionIndex >= headings.Count) return MarkdownText.NormalizeNewlines(markdown);
-        var start = headings[sectionIndex].Line + 1;
+        var start = headings[sectionIndex].Line;
         var end = SectionEnd(headings, sectionIndex, lines.Length);
         var replacementLines = MarkdownText.NormalizeNewlines(replacement).Trim('\n').Split('\n');
         if (replacementLines is [""]) replacementLines = [];
