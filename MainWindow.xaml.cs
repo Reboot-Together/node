@@ -432,10 +432,39 @@ public sealed partial class MainWindow : Window
                 {
                     Editor.Focus(FocusState.Programmatic);
                     Editor.Select(offset, 0);
+                    DispatcherQueue.TryEnqueue(() => CenterEditorOnCharacter(offset));
                 });
             }
         }
         catch { }
+    }
+
+    private void CenterEditorOnCharacter(int offset)
+    {
+        var scrollViewer = FindVisualDescendant<ScrollViewer>(Editor);
+        if (scrollViewer is null || scrollViewer.ViewportHeight <= 0) return;
+
+        var characterBounds = Editor.GetRectFromCharacterIndex(Math.Clamp(offset, 0, Editor.Text.Length), false);
+        var centeredOffset = scrollViewer.VerticalOffset
+            + characterBounds.Y
+            + characterBounds.Height / 2
+            - scrollViewer.ViewportHeight / 2;
+        scrollViewer.ChangeView(
+            null,
+            Math.Clamp(centeredOffset, 0, scrollViewer.ScrollableHeight),
+            null,
+            true);
+    }
+
+    private static T? FindVisualDescendant<T>(DependencyObject parent) where T : DependencyObject
+    {
+        for (var index = 0; index < VisualTreeHelper.GetChildrenCount(parent); index++)
+        {
+            var child = VisualTreeHelper.GetChild(parent, index);
+            if (child is T match) return match;
+            if (FindVisualDescendant<T>(child) is { } descendant) return descendant;
+        }
+        return null;
     }
 
     private string? ResolveNoteBody(string title) => _notes.FirstOrDefault(note => note.Title.Equals(title, StringComparison.OrdinalIgnoreCase))?.Body;
