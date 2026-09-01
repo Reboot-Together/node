@@ -18,14 +18,15 @@ public static class MarkdownPreviewRenderer
         string markdown,
         string vaultPath,
         Func<string, string?>? resolveNote = null,
-        IReadOnlyDictionary<string, bool>? foldStates = null)
+        IReadOnlyDictionary<string, bool>? foldStates = null,
+        double initialScrollY = 0)
     {
         var body = RenderBody(markdown, vaultPath, resolveNote, 0);
         body = Regex.Replace(body, "<script[^>]*>.*?</script>", "", RegexOptions.IgnoreCase | RegexOptions.Singleline);
         body = Regex.Replace(body, "\\s+on[a-z]+\\s*=\\s*(['\"]).*?\\1", "", RegexOptions.IgnoreCase | RegexOptions.Singleline);
         body = Regex.Replace(body, "href=(['\"])javascript:.*?\\1", "href=\"#\"", RegexOptions.IgnoreCase);
         body = Regex.Replace(body, "href=\"(?![a-z]+:|#)([^\"]+?)(?:\\.md)?(?:#[^\"]*)?\"", match => $"href=\"node-note://note/{Uri.EscapeDataString(WebUtility.HtmlDecode(match.Groups[1].Value).Replace("%20", " "))}\"");
-        return HtmlShell(body, foldStates);
+        return HtmlShell(body, foldStates, initialScrollY);
     }
 
     private static string RenderBody(string markdown, string vaultPath, Func<string, string?>? resolveNote, int depth)
@@ -136,9 +137,10 @@ public static class MarkdownPreviewRenderer
         catch { return false; }
     }
 
-    private static string HtmlShell(string body, IReadOnlyDictionary<string, bool>? foldStates)
+    private static string HtmlShell(string body, IReadOnlyDictionary<string, bool>? foldStates, double initialScrollY)
     {
         var serializedFoldStates = JsonSerializer.Serialize(foldStates ?? new Dictionary<string, bool>());
+        var serializedScrollY = JsonSerializer.Serialize(double.IsFinite(initialScrollY) && initialScrollY > 0 ? initialScrollY : 0);
         return $$"""
         <!doctype html>
         <html>
@@ -171,6 +173,7 @@ public static class MarkdownPreviewRenderer
             (() => {
               const root = document.body;
               const initialFoldStates = {{serializedFoldStates}};
+              const initialScrollY = {{serializedScrollY}};
               const originalNodes = Array.from(root.childNodes);
               const stack = [];
               const foldKeyCounts = new Map();
@@ -213,20 +216,34 @@ public static class MarkdownPreviewRenderer
                 event.stopPropagation();
                 window.chrome.webview.postMessage({ type: 'focus-editor' });
               });
-              if (!sectionCount) return;
-              const tools = document.createElement('nav');
-              tools.className = 'fold-tools';
-              tools.setAttribute('aria-label', '문서 접기 도구');
-              const expand = document.createElement('button');
-              expand.type = 'button';
-              expand.textContent = '모두 펼치기';
-              expand.addEventListener('click', () => document.querySelectorAll('.md-section').forEach(section => section.open = true));
-              const collapse = document.createElement('button');
-              collapse.type = 'button';
-              collapse.textContent = '모두 접기';
-              collapse.addEventListener('click', () => document.querySelectorAll('.md-section').forEach(section => section.open = false));
-              tools.append(expand, collapse);
-              root.prepend(tools);
+              if (sectionCount) {
+                const tools = document.createElement('nav');
+                tools.className = 'fold-tools';
+                tools.setAttribute('aria-label', '문서 접기 도구');
+                const expand = document.createElement('button');
+                expand.type = 'button';
+                expand.textContent = '모두 펼치기';
+                expand.addEventListener('click', () => document.querySelectorAll('.md-section').forEach(section => section.open = true));
+                const collapse = document.createElement('button');
+                collapse.type = 'button';
+                collapse.textContent = '모두 접기';
+                collapse.addEventListener('click', () => document.querySelectorAll('.md-section').forEach(section => section.open = false));
+                tools.append(expand, collapse);
+                root.prepend(tools);
+              }
+
+              window.scrollTo(0, initialScrollY);
+              requestAnimationFrame(() => {
+                window.scrollTo(0, initialScrollY);
+                let scrollFrame = 0;
+                window.addEventListener('scroll', () => {
+                  if (scrollFrame) return;
+                  scrollFrame = requestAnimationFrame(() => {
+                    scrollFrame = 0;
+                    window.chrome.webview.postMessage({ type: 'preview-scroll', y: window.scrollY });
+                  });
+                }, { passive: true });
+              });
             })();
           </script>
         </body>

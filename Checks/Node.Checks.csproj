@@ -3,6 +3,7 @@
   <ItemGroup>
     <Compile Include="..\Models.cs" Link="Models.cs" />
     <Compile Include="..\MarkdownText.cs" Link="MarkdownText.cs" />
+    <Compile Include="..\MarkdownHeadingLevelService.cs" Link="MarkdownHeadingLevelService.cs" />
     <Compile Include="..\ChatGptImportService.cs" Link="ChatGptImportService.cs" />
     <Compile Include="..\NoteRepository.cs" Link="NoteRepository.cs" />
     <Compile Include="..\NoteLinkService.cs" Link="NoteLinkService.cs" />

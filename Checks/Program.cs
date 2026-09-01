@@ -146,6 +146,12 @@ Recall = TP / (TP + FN)
     var visibleLineBreakRender = MarkdownPreviewRenderer.Render("첫 줄\n둘째 줄", root);
     if (!visibleLineBreakRender.Contains("첫 줄<br") || !visibleLineBreakRender.Contains("둘째 줄")) throw new Exception("일반 본문 단일 줄바꿈 표시 실패");
 
+    var promotedHeading = MarkdownHeadingLevelService.Change("## 제목", 5, 0, -1);
+    if (!promotedHeading.Changed || promotedHeading.Text != "# 제목" || promotedHeading.SelectionStart != 4) throw new Exception("제목 한 수준 증가 단축키 처리 실패");
+    var demotedHeadings = MarkdownHeadingLevelService.Change("## 첫째\n본문\n### 둘째", 0, 17, 1);
+    if (!demotedHeadings.Changed || demotedHeadings.Text != "### 첫째\n본문\n#### 둘째") throw new Exception("선택 제목 한 수준 감소 단축키 처리 실패");
+    if (MarkdownHeadingLevelService.Change("# 최대", 0, 0, -1).Changed || MarkdownHeadingLevelService.Change("###### 최소", 0, 0, 1).Changed) throw new Exception("제목 수준 변경 범위 제한 실패");
+
     var attachmentDirectory = Path.Combine(root, "attachments");
     Directory.CreateDirectory(attachmentDirectory);
     File.WriteAllBytes(Path.Combine(attachmentDirectory, "붙여넣기.png"), [0x89, 0x50, 0x4e, 0x47]);
@@ -168,7 +174,7 @@ Recall = TP / (TP + FN)
     var sectionRender = MarkdownPreviewRenderer.Render(sectionMarkdown, root);
     if (!sectionRender.Contains("data-level='1']>.md-summary>h1{font-size:19px}") || sectionRender.Contains("data-level='1']>.md-summary>h1{font-size:22px}")) throw new Exception("노트 제목보다 작은 본문 1단계 제목 크기 적용 실패");
     if (!sectionRender.Contains("document.addEventListener('dblclick'") || !sectionRender.Contains("type: 'focus-editor'") || sectionRender.Contains("document.addEventListener('pointerdown'")) throw new Exception("본문 더블클릭 편집기 포커스 연결 실패");
-    if (sectionRender.IndexOf("document.addEventListener('dblclick'", StringComparison.Ordinal) > sectionRender.IndexOf("if (!sectionCount) return", StringComparison.Ordinal)) throw new Exception("제목 없는 노트의 전체 편집 진입 연결 실패");
+    if (!sectionRender.Contains("if (sectionCount)")) throw new Exception("제목 없는 노트의 미리보기 상호작용 연결 실패");
     if (!sectionRender.Contains("heading.title = '더블클릭해서 편집기로 이동'") || sectionRender.Contains("update-section") || sectionRender.Contains("section-editor") || sectionRender.Contains("beginEditing")) throw new Exception("수준별 편집 제거 및 제목 더블클릭 편집기 포커스 연결 실패");
     if (!sectionRender.Contains("initialFoldStates[foldKey] : true")) throw new Exception("제목 구역 기본 펼침 상태 적용 실패");
 
@@ -177,6 +183,12 @@ Recall = TP / (TP + FN)
         || !rememberedFoldRender.Contains("type: 'fold-state'")
         || !rememberedFoldRender.Contains("Object.hasOwn(initialFoldStates, foldKey)"))
         throw new Exception("미리보기 갱신 시 제목 접힘 상태 복원 실패");
+
+    var rememberedScrollRender = MarkdownPreviewRenderer.Render("# Section\n\nBody", root, null, null, 321.5);
+    if (!rememberedScrollRender.Contains("const initialScrollY = 321.5")
+        || !rememberedScrollRender.Contains("window.scrollTo(0, initialScrollY)")
+        || !rememberedScrollRender.Contains("type: 'preview-scroll'"))
+        throw new Exception("미리보기 갱신 시 스크롤 위치 복원 실패");
     if (!UpdateService.TryParseVersion("v0.1.0", out var parsedVersion) || parsedVersion != new Version(0, 1, 0) || UpdateService.TryParseVersion("latest", out _)) throw new Exception("업데이트 버전 분석 실패");
     Console.WriteLine("Node checks passed.");
 }

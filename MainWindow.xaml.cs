@@ -28,6 +28,7 @@ public sealed partial class MainWindow : Window
     private IReadOnlyDictionary<string, List<string>> _noteLinks = new Dictionary<string, List<string>>(StringComparer.OrdinalIgnoreCase);
     private readonly HashSet<string> _expandedFolders = new(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<string, Dictionary<string, bool>> _noteFoldStates = new(StringComparer.OrdinalIgnoreCase);
+    private readonly Dictionary<string, double> _notePreviewScrollPositions = new(StringComparer.OrdinalIgnoreCase);
     private NoteInfo? _selected;
     private bool _loading;
     private bool _previewReady;
@@ -223,6 +224,28 @@ public sealed partial class MainWindow : Window
         var controlDown = IsKeyDown(Windows.System.VirtualKey.Control)
             || IsKeyDown(Windows.System.VirtualKey.LeftControl)
             || IsKeyDown(Windows.System.VirtualKey.RightControl);
+        var shiftDown = IsKeyDown(Windows.System.VirtualKey.Shift)
+            || IsKeyDown(Windows.System.VirtualKey.LeftShift)
+            || IsKeyDown(Windows.System.VirtualKey.RightShift);
+
+        var headingLevelDelta = (int)e.Key switch
+        {
+            188 when shiftDown => -1,
+            190 when shiftDown => 1,
+            _ => 0
+        };
+        if (headingLevelDelta != 0)
+        {
+            var edit = MarkdownHeadingLevelService.Change(Editor.Text, Editor.SelectionStart, Editor.SelectionLength, headingLevelDelta);
+            if (edit.Changed)
+            {
+                e.Handled = true;
+                Editor.Text = edit.Text;
+                Editor.SelectionStart = edit.SelectionStart;
+                Editor.SelectionLength = edit.SelectionLength;
+                return;
+            }
+        }
 
         if (e.Key == Windows.System.VirtualKey.V && controlDown)
         {
@@ -344,7 +367,12 @@ public sealed partial class MainWindow : Window
     private void UpdateMarkdownPreview()
     {
         if (!_previewReady) return;
-        MarkdownPreview.NavigateToString(MarkdownPreviewRenderer.Render(Editor.Text, _workspace.RootPath, ResolveNoteBody, CurrentFoldStates()));
+        MarkdownPreview.NavigateToString(MarkdownPreviewRenderer.Render(
+            Editor.Text,
+            _workspace.RootPath,
+            ResolveNoteBody,
+            CurrentFoldStates(),
+            CurrentPreviewScrollY()));
     }
 
     private Dictionary<string, bool> CurrentFoldStates()
@@ -357,6 +385,11 @@ public sealed partial class MainWindow : Window
         }
         return states;
     }
+
+    private double CurrentPreviewScrollY()
+        => _selected is not null && _notePreviewScrollPositions.TryGetValue(_selected.Path, out var scrollY)
+            ? scrollY
+            : 0;
 
     private void MarkdownPreview_WebMessageReceived(CoreWebView2 sender, CoreWebView2WebMessageReceivedEventArgs args)
     {
@@ -372,6 +405,15 @@ public sealed partial class MainWindow : Window
                 && openElement.ValueKind is JsonValueKind.True or JsonValueKind.False)
             {
                 CurrentFoldStates()[key] = openElement.GetBoolean();
+            }
+            else if (type.GetString() == "preview-scroll"
+                && _selected is not null
+                && root.TryGetProperty("y", out var yElement)
+                && yElement.TryGetDouble(out var scrollY)
+                && double.IsFinite(scrollY)
+                && scrollY >= 0)
+            {
+                _notePreviewScrollPositions[_selected.Path] = scrollY;
             }
             else if (type.GetString() == "focus-editor")
             {
