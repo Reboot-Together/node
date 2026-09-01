@@ -2,9 +2,14 @@ using System.Text.Json;
 
 namespace AsterismApp;
 
-public sealed record UiLayoutSettings(double PreviewRatio, bool ExplorerCollapsed, double InspectorWidth = 348)
+public sealed record UiLayoutSettings(
+    double PreviewRatio,
+    bool ExplorerCollapsed,
+    double InspectorWidth = 348,
+    double FontScale = 1,
+    string AccentTheme = "gold")
 {
-    public static UiLayoutSettings Default { get; } = new(.68, false, 348);
+    public static UiLayoutSettings Default { get; } = new(.68, false, 348, 1, "gold");
 }
 
 public sealed class UiLayoutSettingsService
@@ -39,6 +44,12 @@ public sealed class UiLayoutSettingsService
         settings with
         {
             PreviewRatio = Math.Clamp(settings.PreviewRatio, .3, .85),
-            InspectorWidth = Math.Clamp(settings.InspectorWidth <= 0 ? 348 : settings.InspectorWidth, 240, 720)
+            InspectorWidth = Math.Clamp(settings.InspectorWidth <= 0 ? 348 : settings.InspectorWidth, 240, 720),
+            FontScale = Math.Clamp(settings.FontScale <= 0 ? 1 : settings.FontScale, .8, 1.4),
+            AccentTheme = new[] { "gold", "blue", "teal", "purple" }.Contains(
+                settings.AccentTheme,
+                StringComparer.OrdinalIgnoreCase)
+                    ? settings.AccentTheme.ToLowerInvariant()
+                    : "gold"
         };
 }

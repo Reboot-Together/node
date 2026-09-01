@@ -1,9 +1,11 @@
+using System.Numerics;
+using Microsoft.UI.Composition;
 using Microsoft.UI;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
+using Microsoft.UI.Xaml.Hosting;
 using Microsoft.UI.Xaml.Input;
 using Microsoft.UI.Xaml.Media;
-using Microsoft.UI.Xaml.Media.Animation;
 using Microsoft.UI.Xaml.Shapes;
 
 namespace AsterismApp;
@@ -14,7 +16,7 @@ public sealed partial class MainWindow
     private const double GraphLogicalHeight = 1200;
     private readonly GraphLayoutService _graphLayoutService = new();
     private readonly GraphLabelLayoutService _graphLabelLayoutService = new();
-    private double _graphZoom = 1;
+    private double _graphZoom = .72;
     private Dictionary<string, GraphPoint> _graphPoints = new(StringComparer.OrdinalIgnoreCase);
     private GraphLayout? _activeGraphLayout;
     private readonly List<UIElement> _graphLabelElements = [];
@@ -25,23 +27,18 @@ public sealed partial class MainWindow
     private double _graphHorizontalStart;
     private double _graphVerticalStart;
     private int _graphViewportRevision;
-    private readonly RotateTransform _graphHoverRotation = new();
-    private Storyboard? _graphHoverStoryboard;
-    private bool _graphPointerInside;
-    private Storyboard? _graphTwinkleStoryboard;
+    private readonly List<Visual> _graphTwinkleVisuals = [];
 
     private void GraphZoomIn_Click(object sender, RoutedEventArgs e)
     {
         _graphZoom = GraphViewportService.ChangeZoom(_graphZoom, zoomIn: true, 1.25);
         DrawGraph();
-        UpdateGraphRotation();
     }
 
     private void GraphZoomOut_Click(object sender, RoutedEventArgs e)
     {
         _graphZoom = GraphViewportService.ChangeZoom(_graphZoom, zoomIn: false, 1.25);
         DrawGraph();
-        UpdateGraphRotation();
     }
 
     private void GraphCanvas_PointerWheelChanged(object sender, PointerRoutedEventArgs e)
@@ -65,7 +62,6 @@ public sealed partial class MainWindow
 
         _graphZoom = nextZoom;
         DrawGraph(centerCurrentNode: false);
-        UpdateGraphRotation();
         DispatcherQueue.TryEnqueue(() =>
         {
             if (viewportRevision != _graphViewportRevision) return;
@@ -82,9 +78,7 @@ public sealed partial class MainWindow
         GraphZoomText.Text = $"{_graphZoom:P0}";
         GraphCanvas.Width = GraphLogicalWidth * _graphZoom;
         GraphCanvas.Height = GraphLogicalHeight * _graphZoom;
-        GraphCanvas.RenderTransform = _graphHoverRotation;
         StopGraphTwinkles();
-        _graphTwinkleStoryboard = new Storyboard();
         GraphCanvas.Children.Clear();
         _graphLabelElements.Clear();
         AddConstellationField(GraphCanvas.Width, GraphCanvas.Height);
@@ -93,11 +87,7 @@ public sealed partial class MainWindow
             .GroupBy(note => note.Title, StringComparer.OrdinalIgnoreCase)
             .Select(group => group.First())
             .ToList();
-        if (notes.Count == 0)
-        {
-            BeginGraphTwinkles();
-            return;
-        }
+        if (notes.Count == 0) return;
 
         var selectedTitle = _selected?.Title;
         var graphLinks = MergeGraphLinks(_noteLinks, _semanticLinks, notes.Select(note => note.Title));
@@ -131,7 +121,7 @@ public sealed partial class MainWindow
                     Y2 = to.Y,
                     Stroke = new SolidColorBrush(explicitLink
                         ? highlighted
-                            ? ColorHelper.FromArgb(240, 238, 211, 143)
+                            ? GraphAccent(240, bright: true)
                             : ColorHelper.FromArgb(145, 190, 190, 190)
                         : highlighted
                             ? ColorHelper.FromArgb(110, 165, 165, 165)
@@ -154,7 +144,6 @@ public sealed partial class MainWindow
         if (_hoveredGraphTitle is not null && !_graphPoints.ContainsKey(_hoveredGraphTitle))
             _hoveredGraphTitle = null;
         RefreshGraphLabels();
-        BeginGraphTwinkles();
 
         if (centerCurrentNode)
             DispatcherQueue.TryEnqueue(() =>
@@ -235,80 +224,6 @@ public sealed partial class MainWindow
         GraphCanvas.ReleasePointerCapture(e.Pointer);
     }
 
-    private void GraphScroll_PointerEntered(object sender, PointerRoutedEventArgs e)
-    {
-        _graphPointerInside = true;
-        UpdateGraphRotation();
-    }
-
-    private void GraphScroll_PointerExited(object sender, PointerRoutedEventArgs e)
-    {
-        _graphPointerInside = false;
-        AnimateGraphUpright();
-    }
-
-    private void UpdateGraphRotation()
-    {
-        if (!_graphPointerInside) return;
-
-        var durationSeconds = GraphViewportService.RotationDurationSeconds(_graphZoom);
-        if (durationSeconds <= 0)
-        {
-            AnimateGraphUpright();
-            return;
-        }
-
-        var currentAngle = FreezeGraphRotation();
-        var animation = new DoubleAnimation
-        {
-            From = currentAngle,
-            To = currentAngle + 360,
-            Duration = new Duration(TimeSpan.FromSeconds(durationSeconds)),
-            RepeatBehavior = RepeatBehavior.Forever,
-            EnableDependentAnimation = true
-        };
-        Storyboard.SetTarget(animation, _graphHoverRotation);
-        Storyboard.SetTargetProperty(animation, nameof(RotateTransform.Angle));
-        _graphHoverStoryboard = new Storyboard();
-        _graphHoverStoryboard.Children.Add(animation);
-        _graphHoverStoryboard.Begin();
-    }
-
-    private void AnimateGraphUpright()
-    {
-        var currentAngle = FreezeGraphRotation();
-        var targetAngle = Math.Round(currentAngle / 360) * 360;
-        if (Math.Abs(targetAngle - currentAngle) < .01)
-        {
-            _graphHoverRotation.Angle = targetAngle;
-            return;
-        }
-
-        _graphHoverStoryboard?.Stop();
-        var animation = new DoubleAnimation
-        {
-            From = currentAngle,
-            To = targetAngle,
-            Duration = new Duration(TimeSpan.FromMilliseconds(850)),
-            EnableDependentAnimation = true,
-            EasingFunction = new CubicEase { EasingMode = EasingMode.EaseInOut }
-        };
-        Storyboard.SetTarget(animation, _graphHoverRotation);
-        Storyboard.SetTargetProperty(animation, nameof(RotateTransform.Angle));
-        _graphHoverStoryboard = new Storyboard();
-        _graphHoverStoryboard.Children.Add(animation);
-        _graphHoverStoryboard.Begin();
-    }
-
-    private double FreezeGraphRotation()
-    {
-        var currentAngle = _graphHoverRotation.Angle;
-        _graphHoverStoryboard?.Stop();
-        _graphHoverStoryboard = null;
-        _graphHoverRotation.Angle = currentAngle;
-        return currentAngle;
-    }
-
     private void AddConstellationField(double width, double height)
     {
         var centerX = width / 2;
@@ -384,7 +299,7 @@ public sealed partial class MainWindow
             Canvas.SetLeft(star, 24 + (index * 223 % Math.Max(1, (int)width - 48)));
             Canvas.SetTop(star, 20 + (index * 137 % Math.Max(1, (int)height - 40)));
             GraphCanvas.Children.Add(star);
-            StartGraphTwinkle(star, $"field:{index}", index % 17 == 0 ? .58 : .38);
+            StartGraphTwinkle(star, $"field:{index}", index % 17 == 0 ? .35 : .16);
         }
     }
 
@@ -402,7 +317,7 @@ public sealed partial class MainWindow
             {
                 Width = (radius + haloPadding) * 2,
                 Height = (radius + haloPadding) * 2,
-                Fill = new SolidColorBrush(ColorHelper.FromArgb(58, 238, 211, 143)),
+                Fill = new SolidColorBrush(GraphAccent(58, bright: true)),
                 IsHitTestVisible = false
             };
             Canvas.SetLeft(halo, point.X - radius - haloPadding);
@@ -415,7 +330,7 @@ public sealed partial class MainWindow
         {
             Width = radius * 2,
             Height = radius * 2,
-            Fill = new SolidColorBrush(selected ? ColorHelper.FromArgb(255, 238, 211, 143) : color),
+            Fill = new SolidColorBrush(selected ? GraphAccent(255, bright: true) : color),
             Stroke = new SolidColorBrush(ColorHelper.FromArgb(225, 255, 255, 255)),
             StrokeThickness = selected ? .85 : .55,
             IsHitTestVisible = false
@@ -424,7 +339,7 @@ public sealed partial class MainWindow
         Canvas.SetTop(core, point.Y - radius);
         Canvas.SetZIndex(core, 3);
         GraphCanvas.Children.Add(core);
-        StartGraphTwinkle(core, $"note:{note.Title}", selected ? .84 : .64);
+        StartGraphTwinkle(core, $"note:{note.Title}", selected ? .55 : .3);
 
         var hitRadius = Math.Max(8, radius);
         var hitTarget = new Ellipse
@@ -446,35 +361,29 @@ public sealed partial class MainWindow
     private void StartGraphTwinkle(FrameworkElement star, string key, double minimumOpacity)
     {
         var seed = unchecked((uint)StringComparer.Ordinal.GetHashCode(key));
-        var durationSeconds = 2.8 + seed % 41 / 10d;
-        var delaySeconds = (seed >> 8) % 16 / 10d;
-        star.Opacity = minimumOpacity;
-
-        var animation = new DoubleAnimation
-        {
-            From = minimumOpacity,
-            To = 1,
-            Duration = new Duration(TimeSpan.FromSeconds(durationSeconds)),
-            BeginTime = TimeSpan.FromSeconds(delaySeconds),
-            AutoReverse = true,
-            RepeatBehavior = RepeatBehavior.Forever,
-            EasingFunction = new SineEase { EasingMode = EasingMode.EaseInOut }
-        };
-        Storyboard.SetTarget(animation, star);
-        Storyboard.SetTargetProperty(animation, nameof(UIElement.Opacity));
-        _graphTwinkleStoryboard?.Children.Add(animation);
-    }
-
-    private void BeginGraphTwinkles()
-    {
-        if (_graphTwinkleStoryboard?.Children.Count > 0)
-            _graphTwinkleStoryboard.Begin();
+        var durationSeconds = 1.6 + seed % 31 / 10d;
+        var delaySeconds = (seed >> 8) % 13 / 10d;
+        var visual = ElementCompositionPreview.GetElementVisual(star);
+        var easing = visual.Compositor.CreateCubicBezierEasingFunction(
+            new Vector2(.42f, 0),
+            new Vector2(.58f, 1));
+        var animation = visual.Compositor.CreateScalarKeyFrameAnimation();
+        animation.InsertKeyFrame(0, (float)minimumOpacity, easing);
+        animation.InsertKeyFrame(.5f, 1, easing);
+        animation.InsertKeyFrame(1, (float)minimumOpacity, easing);
+        animation.Duration = TimeSpan.FromSeconds(durationSeconds);
+        animation.DelayTime = TimeSpan.FromSeconds(delaySeconds);
+        animation.IterationBehavior = AnimationIterationBehavior.Forever;
+        visual.Opacity = (float)minimumOpacity;
+        visual.StartAnimation(nameof(Visual.Opacity), animation);
+        _graphTwinkleVisuals.Add(visual);
     }
 
     private void StopGraphTwinkles()
     {
-        _graphTwinkleStoryboard?.Stop();
-        _graphTwinkleStoryboard = null;
+        foreach (var visual in _graphTwinkleVisuals)
+            visual.StopAnimation(nameof(Visual.Opacity));
+        _graphTwinkleVisuals.Clear();
     }
 
     private void SetHoveredGraphNode(string title)
@@ -506,7 +415,7 @@ public sealed partial class MainWindow
         var hovering = _hoveredGraphTitle is not null;
         var mode = GraphViewportService.LabelMode(_graphZoom, hovering);
         var neighbors = GraphNeighborsOf(focusTitle, _activeGraphLayout.Links);
-        var labelScale = Math.Clamp(Math.Sqrt(_graphZoom), .82, 1.1);
+        var labelScale = Math.Clamp(Math.Sqrt(_graphZoom), .82, 1.1) * _uiLayoutSettings.FontScale;
         var candidates = new List<GraphLabelCandidate>();
         var included = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
@@ -584,7 +493,7 @@ public sealed partial class MainWindow
         {
             Width = radius * 2,
             Height = radius * 2,
-            Stroke = new SolidColorBrush(ColorHelper.FromArgb(25, 209, 175, 97)),
+            Stroke = new SolidColorBrush(GraphAccent(25)),
             StrokeThickness = .7,
             IsHitTestVisible = false
         };
@@ -603,7 +512,7 @@ public sealed partial class MainWindow
             Text = placement.Candidate.Title,
             Foreground = new SolidColorBrush(role switch
             {
-                GraphLabelRole.Focus => ColorHelper.FromArgb(255, 240, 211, 143),
+                GraphLabelRole.Focus => GraphAccent(255, bright: true),
                 GraphLabelRole.Selected => ColorHelper.FromArgb(255, 238, 242, 247),
                 GraphLabelRole.Neighbor => ColorHelper.FromArgb(238, 218, 218, 218),
                 GraphLabelRole.Summary => ColorHelper.FromArgb(225, 175, 175, 175),
@@ -614,7 +523,9 @@ public sealed partial class MainWindow
                 ? Microsoft.UI.Text.FontWeights.SemiBold
                 : Microsoft.UI.Text.FontWeights.Normal,
             IsHitTestVisible = false,
-            MaxWidth = placement.Candidate.MaximumWidth,
+            Width = placement.Width,
+            MaxLines = 2,
+            TextWrapping = TextWrapping.Wrap,
             TextTrimming = TextTrimming.CharacterEllipsis
         };
         FrameworkElement element = text;
@@ -654,6 +565,12 @@ public sealed partial class MainWindow
             : note.Metadata.Type.Equals("Daily", StringComparison.OrdinalIgnoreCase)
                 ? ColorHelper.FromArgb(255, 235, 235, 235)
                 : ColorHelper.FromArgb(255, 220, 220, 220);
+
+    private Windows.UI.Color GraphAccent(byte alpha, bool bright = false)
+    {
+        var color = bright ? CurrentAccent.Bright : CurrentAccent.Accent;
+        return ColorHelper.FromArgb(alpha, color.R, color.G, color.B);
+    }
 
     private static IReadOnlyDictionary<string, List<string>> MergeGraphLinks(
         IReadOnlyDictionary<string, List<string>> explicitLinks,

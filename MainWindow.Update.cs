@@ -12,9 +12,13 @@ public sealed partial class MainWindow
     {
         if (_checkingUpdates) return;
 
+        var updateButton = sender as Button;
         _checkingUpdates = true;
-        UpdateButton.IsEnabled = false;
-        UpdateButton.Content = "확인 중…";
+        if (updateButton is not null)
+        {
+            updateButton.IsEnabled = false;
+            updateButton.Content = "확인 중…";
+        }
         try
         {
             var releases = await _updateService.GetStableReleasesAsync();
@@ -79,11 +83,13 @@ public sealed partial class MainWindow
                 return;
 
             SaveCurrent();
-            UpdateButton.Content = "다운로드 0%";
+            if (updateButton is not null) updateButton.Content = "다운로드 0%";
             var progress = new Progress<int>(percent =>
-                UpdateButton.Content = $"다운로드 {percent}%");
+            {
+                if (updateButton is not null) updateButton.Content = $"다운로드 {percent}%";
+            });
             await _updateService.PrepareInstallationAsync(release, progress);
-            UpdateButton.Content = "설치 준비됨";
+            if (updateButton is not null) updateButton.Content = "설치 준비됨";
             Close();
         }
         catch (HttpRequestException exception)
@@ -97,10 +103,10 @@ public sealed partial class MainWindow
         finally
         {
             _checkingUpdates = false;
-            if (UpdateButton is not null)
+            if (updateButton is not null)
             {
-                UpdateButton.IsEnabled = true;
-                UpdateButton.Content = "업데이트";
+                updateButton.IsEnabled = true;
+                updateButton.Content = "업데이트 확인";
             }
         }
     }

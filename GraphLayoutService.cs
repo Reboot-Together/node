@@ -56,6 +56,11 @@ public sealed class GraphLayoutService
             SimulationRuns++;
         }
 
+        var selectedNeighbors = links
+            .Where(pair => pair.Key.Equals(selectedTitle, StringComparison.OrdinalIgnoreCase) || pair.Value.Contains(selectedTitle ?? "", StringComparer.OrdinalIgnoreCase))
+            .SelectMany(pair => pair.Key.Equals(selectedTitle, StringComparison.OrdinalIgnoreCase) ? pair.Value.AsEnumerable() : [pair.Key])
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+
         if (selectedTitle is not null && points.TryGetValue(selectedTitle, out var selectedPoint))
         {
             var offsetX = width / 2 - selectedPoint.X;
@@ -63,14 +68,13 @@ public sealed class GraphLayoutService
             foreach (var title in points.Keys.ToList())
             {
                 var point = points[title];
-                points[title] = new GraphPoint(Math.Clamp(point.X + offsetX, 24, width - 24), Math.Clamp(point.Y + offsetY, 24, height - 24));
+                points[title] = new GraphPoint(point.X + offsetX, point.Y + offsetY);
             }
+
+            BalanceAroundSelected(points, selectedTitle, width, height);
+            BringSelectedNeighborsCloser(points, selectedTitle, selectedNeighbors, width, height);
         }
 
-        var selectedNeighbors = links
-            .Where(pair => pair.Key.Equals(selectedTitle, StringComparison.OrdinalIgnoreCase) || pair.Value.Contains(selectedTitle ?? "", StringComparer.OrdinalIgnoreCase))
-            .SelectMany(pair => pair.Key.Equals(selectedTitle, StringComparison.OrdinalIgnoreCase) ? pair.Value.AsEnumerable() : [pair.Key])
-            .ToHashSet(StringComparer.OrdinalIgnoreCase);
         var degrees = notes.ToDictionary(note => note.Title, _ => 0, StringComparer.OrdinalIgnoreCase);
         foreach (var (source, targets) in links)
             foreach (var target in targets)
@@ -80,6 +84,81 @@ public sealed class GraphLayoutService
             }
 
         return new GraphLayout(points, links, degrees, selectedNeighbors);
+    }
+
+    private static void BalanceAroundSelected(
+        IDictionary<string, GraphPoint> points,
+        string selectedTitle,
+        double width,
+        double height)
+    {
+        if (!points.TryGetValue(selectedTitle, out var focus)) return;
+        var others = points
+            .Where(pair => !pair.Key.Equals(selectedTitle, StringComparison.OrdinalIgnoreCase))
+            .Select(pair =>
+            {
+                var dx = pair.Value.X - focus.X;
+                var dy = pair.Value.Y - focus.Y;
+                var distance = Math.Sqrt(dx * dx + dy * dy);
+                return (pair.Key, Distance: distance, Angle: Math.Atan2(dy, dx));
+            })
+            .Where(item => item.Distance > .001)
+            .OrderBy(item => item.Angle)
+            .ToList();
+        if (others.Count == 0) return;
+
+        var meanX = others.Average(item => Math.Cos(item.Angle));
+        var meanY = others.Average(item => Math.Sin(item.Angle));
+        var directionalBias = Math.Sqrt(meanX * meanX + meanY * meanY);
+        var maximumRadius = Math.Max(80, Math.Min(width, height) / 2 - 38);
+
+        if (others.Count >= 3 && directionalBias > .32)
+        {
+            var phase = StableSeed(selectedTitle) / (double)int.MaxValue * Math.PI * 2;
+            var spacing = Math.PI * 2 / others.Count;
+            for (var index = 0; index < others.Count; index++)
+            {
+                var item = others[index];
+                var jitter = ((StableSeed(item.Key) & 255) / 255d - .5) * Math.Min(.16, spacing * .22);
+                var angle = phase + index * spacing + jitter;
+                var radius = Math.Clamp(item.Distance, 42, maximumRadius);
+                points[item.Key] = new GraphPoint(
+                    focus.X + Math.Cos(angle) * radius,
+                    focus.Y + Math.Sin(angle) * radius);
+            }
+        }
+
+        foreach (var title in points.Keys.ToList())
+        {
+            var point = points[title];
+            points[title] = new GraphPoint(
+                Math.Clamp(point.X, 24, width - 24),
+                Math.Clamp(point.Y, 24, height - 24));
+        }
+    }
+
+    private static void BringSelectedNeighborsCloser(
+        IDictionary<string, GraphPoint> points,
+        string selectedTitle,
+        IEnumerable<string> selectedNeighbors,
+        double width,
+        double height)
+    {
+        if (!points.TryGetValue(selectedTitle, out var focus)) return;
+        var maximumDistance = Math.Clamp(Math.Min(width, height) * .22, 110, 160);
+        foreach (var title in selectedNeighbors)
+        {
+            if (!points.TryGetValue(title, out var point)) continue;
+            var dx = point.X - focus.X;
+            var dy = point.Y - focus.Y;
+            var distance = Math.Sqrt(dx * dx + dy * dy);
+            if (distance <= maximumDistance || distance < .001) continue;
+
+            var scale = maximumDistance / distance;
+            points[title] = new GraphPoint(
+                Math.Clamp(focus.X + dx * scale, 24, width - 24),
+                Math.Clamp(focus.Y + dy * scale, 24, height - 24));
+        }
     }
 
     private static string CreateCacheKey(
@@ -99,8 +178,22 @@ public sealed class GraphLayoutService
 
     private static GraphPoint InitialPoint(string title, double width, double height)
     {
-        var random = new Random(StringComparer.Ordinal.GetHashCode(title));
+        var random = new Random(StableSeed(title));
         return new GraphPoint(width * (.12 + random.NextDouble() * .76), height * (.14 + random.NextDouble() * .72));
+    }
+
+    private static int StableSeed(string value)
+    {
+        unchecked
+        {
+            uint hash = 2166136261;
+            foreach (var character in value)
+            {
+                hash ^= character;
+                hash *= 16777619;
+            }
+            return (int)(hash & int.MaxValue);
+        }
     }
 
     private static void AddRepulsion(string a, string b, IReadOnlyDictionary<string, GraphPoint> points, IDictionary<string, GraphPoint> forces)

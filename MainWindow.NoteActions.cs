@@ -207,20 +207,25 @@ public sealed partial class MainWindow
             UseShellExecute = true
         });
 
-    private async void ChangeFolder_Click(object sender, RoutedEventArgs e)
+    private async void ChangeFolder_Click(object sender, RoutedEventArgs e) =>
+        await ChangeWorkspaceFolderAsync();
+
+    private async Task<bool> ChangeWorkspaceFolderAsync()
     {
         var picker = CreateFolderPicker();
         var folder = await picker.PickSingleFolderAsync();
-        if (folder is null) return;
+        if (folder is null) return false;
 
         SaveCurrent();
         _workspace.SetRootPath(folder.Path);
         _repository.SetRootPath(folder.Path);
         _expandedFolders.Clear();
+        _folderExpansionInitialized = false;
         _selected = null;
         RefreshNotes();
         if (_notes.Count == 0) NewNote();
         else Select(_notes[0]);
+        return true;
     }
 
     private FolderPicker CreateFolderPicker()

@@ -38,8 +38,7 @@ public sealed class GraphLabelLayoutService
         var placements = new List<GraphLabelPlacement>();
         foreach (var candidate in candidates.OrderBy(item => item.Priority))
         {
-            var labelWidth = EstimateWidth(candidate.Title, candidate.FontSize, candidate.MaximumWidth);
-            var labelHeight = candidate.FontSize * 1.55 + 4;
+            var (labelWidth, labelHeight) = EstimateSize(candidate.Title, candidate.FontSize, candidate.MaximumWidth);
             var preferredAngle = PreferredAngle(candidate, focus);
             GraphPoint? accepted = null;
             foreach (var angleOffset in AlternativeAngles)
@@ -99,9 +98,12 @@ public sealed class GraphLabelLayoutService
             && position.Y + height + padding > existing.Position.Y;
     }
 
-    private static double EstimateWidth(string text, double fontSize, double maximumWidth)
+    private static (double Width, double Height) EstimateSize(string text, double fontSize, double maximumWidth)
     {
         var units = text.Sum(character => character > 255 ? 1d : .58);
-        return Math.Min(maximumWidth, Math.Max(28, units * fontSize + 8));
+        var naturalWidth = Math.Max(28, units * fontSize + 8);
+        var width = Math.Min(maximumWidth, naturalWidth);
+        var lineCount = naturalWidth > maximumWidth ? 2 : 1;
+        return (width, fontSize * 1.45 * lineCount + 4);
     }
 }

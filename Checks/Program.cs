@@ -50,12 +50,14 @@ try
     var uiSettingsPath = Path.Combine(root, "ui-layout.json");
     var uiSettingsService = new UiLayoutSettingsService(uiSettingsPath);
     if (uiSettingsService.Load() != UiLayoutSettings.Default) throw new Exception("UI 배치 기본값 로드 실패");
-    uiSettingsService.Save(new UiLayoutSettings(.72, true, 420));
+    uiSettingsService.Save(new UiLayoutSettings(.72, true, 420, 1.15, "blue"));
     var savedUiSettings = uiSettingsService.Load();
     if (Math.Abs(savedUiSettings.PreviewRatio - .72) > .001
         || !savedUiSettings.ExplorerCollapsed
-        || Math.Abs(savedUiSettings.InspectorWidth - 420) > .001)
-        throw new Exception("미리보기 비율과 탐색기 접힘 상태 저장 실패");
+        || Math.Abs(savedUiSettings.InspectorWidth - 420) > .001
+        || Math.Abs(savedUiSettings.FontScale - 1.15) > .001
+        || savedUiSettings.AccentTheme != "blue")
+        throw new Exception("UI 배치와 모양 설정 저장 실패");
 
     var chunkNote = new NoteInfo(
         "데이터베이스 성능",
@@ -140,6 +142,7 @@ try
     var cachedFolders = treeService.LoadFolders(root);
     var treeItems = treeService.Build(root, store.Load(), cachedFolders, new HashSet<string>([dropTarget], StringComparer.OrdinalIgnoreCase));
     if (!treeItems.Any(item => item.IsFolder && item.Path == dropTarget) || !treeItems.Any(item => item.Note?.Path == draggedNote.Path)) throw new Exception("저장소 폴더 트리 구성 실패");
+    if (treeItems.Any(item => item.IsFolder && item.FolderIconOpacity != 1) || treeItems.Any(item => !item.IsFolder && item.FolderIconOpacity != 0)) throw new Exception("폴더 아이콘 표시 구분 실패");
     var nestedNote = store.CreateInFolder(Path.Combine(movedFolder, "새 폴더"), "깊은 노트");
     var ancestors = treeService.AncestorFolders(root, nestedNote.Path);
     if (!ancestors.SequenceEqual([Path.GetDirectoryName(nestedNote.Path)!, movedFolder, dropTarget, root], StringComparer.OrdinalIgnoreCase)) throw new Exception("선택 노트의 상위 폴더 경로 계산 실패");
@@ -157,6 +160,26 @@ try
     var graphService = new GraphLayoutService();
     var graphLayout = graphService.Calculate(networkNotes, graphLinks, 720, 1200, source.Title);
     if (!graphLayout.Points.ContainsKey(source.Title) || Math.Abs(graphLayout.Points[source.Title].X - 360) > 1 || Math.Abs(graphLayout.Points[source.Title].Y - 600) > 1) throw new Exception("세로형 그래프 중심 배치 실패");
+    var focusedPoint = graphLayout.Points[source.Title];
+    if (graphLayout.SelectedNeighbors.Any(title =>
+        graphLayout.Points.TryGetValue(title, out var neighbor)
+        && Math.Sqrt(Math.Pow(neighbor.X - focusedPoint.X, 2) + Math.Pow(neighbor.Y - focusedPoint.Y, 2)) > 160.01))
+        throw new Exception("현재 노트 주변 선택 별의 초기 밀집 배치 실패");
+    var focus = graphLayout.Points[source.Title];
+    var directions = graphLayout.Points
+        .Where(pair => !pair.Key.Equals(source.Title, StringComparison.OrdinalIgnoreCase))
+        .Select(pair => Math.Atan2(pair.Value.Y - focus.Y, pair.Value.X - focus.X))
+        .ToList();
+    if (directions.Count >= 3)
+    {
+        var directionalBias = Math.Sqrt(
+            Math.Pow(directions.Average(Math.Cos), 2)
+            + Math.Pow(directions.Average(Math.Sin), 2));
+        if (directionalBias > .36) throw new Exception("선택 노트 기준 그래프 한쪽 쏠림 보정 실패");
+    }
+    var repeatedLayout = new GraphLayoutService().Calculate(networkNotes, graphLinks, 720, 1200, source.Title);
+    if (graphLayout.Points.Any(pair => repeatedLayout.Points[pair.Key] != pair.Value))
+        throw new Exception("그래프 배치의 실행 간 결정성 실패");
     graphService.Calculate(networkNotes, graphLinks, 720, 1200, null);
     if (graphService.SimulationRuns != 1) throw new Exception("동일 그래프 레이아웃 캐시 재사용 실패");
     var zoomedViewport = GraphViewportService.CalculateZoomedViewportOffset(
@@ -177,9 +200,6 @@ try
         || GraphViewportService.LabelMode(.3, true) != GraphLabelMode.Orbit
         || GraphViewportService.LabelMode(1.1, false) != GraphLabelMode.Detail)
         throw new Exception("그래프 확대 범위와 단계별 라벨 표시 규칙 실패");
-    if (GraphViewportService.RotationDurationSeconds(GraphViewportService.MaximumZoom) != 0
-        || GraphViewportService.RotationDurationSeconds(GraphViewportService.MinimumZoom) >= GraphViewportService.RotationDurationSeconds(1))
-        throw new Exception("그래프 축소 비례 회전 속도 계산 실패");
     if (GraphViewportService.NodeRadius(1, false, 1) >= 2.5
         || GraphViewportService.NodeRadius(1, false, 20) > 3
         || GraphViewportService.NodeRadius(1, true, 20) > 5
@@ -199,6 +219,13 @@ try
             && left.Position.Y < right.Position.Y + right.Height + 5
             && left.Position.Y + left.Height + 5 > right.Position.Y)).Any(overlap => overlap))
         throw new Exception("궤도형 그래프 라벨 충돌 회피 실패");
+    var wrappedLabel = new GraphLabelLayoutService().Arrange(
+        [new GraphLabelCandidate("아주 긴 문서 제목도 두 줄로 읽을 수 있어야 한다", new GraphPoint(100, 100), 4, 10, 70, 0, GraphLabelRole.Focus)],
+        new GraphPoint(100, 100),
+        240,
+        180).Single();
+    if (wrappedLabel.Width > 70.01 || wrappedLabel.Height < 30)
+        throw new Exception("긴 그래프 문서 제목의 두 줄 배치 실패");
     if (!linkService.ExtractTargets("[[연결됨]] [[연결됨|별칭]]").SetEquals(["연결됨"])) throw new Exception("위키 링크 대상 인덱스 생성 실패");
     var rendered = MarkdownPreviewRenderer.Render("""
 ==강조==와 [[연결됨|위키 링크]] %%숨김%%
@@ -213,6 +240,18 @@ try
 - [x] 완료
 """, root);
     if (!rendered.Contains("<mark>") || !rendered.Contains("internal-link") || !rendered.Contains("<table") || !rendered.Contains("class=\"callout\"") || !rendered.Contains("md-section") || !rendered.Contains("모두 접기") || rendered.Contains("숨김")) throw new Exception("Markdown 미리보기 렌더링 실패");
+    var highlightedCode = MarkdownPreviewRenderer.Render("""
+    ```python
+    def greet(name):
+        # comment
+        print("hello", name)
+    ```
+    """, root);
+    if (!highlightedCode.Contains("data-language=\"PYTHON\"")
+        || !highlightedCode.Contains("tok-keyword\">def")
+        || !highlightedCode.Contains("tok-comment\"># comment")
+        || !highlightedCode.Contains("tok-string\">&quot;hello&quot;"))
+        throw new Exception("오프라인 코드 문법 강조 실패");
 
     var confusionMatrix = MarkdownPreviewRenderer.Render("""
 ## 주요 평가 지표
@@ -231,7 +270,7 @@ Recall = TP / (TP + FN)
 
 - **TP (True Positive)**: 실제 양성 → 양성 예측
 """, root);
-    if (!confusionMatrix.Contains("<h2") || !confusionMatrix.Contains("<h3") || !confusionMatrix.Contains("<table") || !confusionMatrix.Contains("<strong>") || !confusionMatrix.Contains("<pre><code")) throw new Exception("ChatGPT 스타일 문서 렌더링 실패");
+    if (!confusionMatrix.Contains("<h2") || !confusionMatrix.Contains("<h3") || !confusionMatrix.Contains("<table") || !confusionMatrix.Contains("<strong>") || !confusionMatrix.Contains("<pre") || !confusionMatrix.Contains("<code")) throw new Exception("ChatGPT 스타일 문서 렌더링 실패");
     if (!confusionMatrix.Contains("width:max-content;max-width:100%") || confusionMatrix.Contains("table{border-collapse:collapse;width:100%")) throw new Exception("내용 기반 표 너비 적용 실패");
 
     var windowsTextBoxMarkdown = "## CR 줄바꿈\r\r| 항목 | 값 |\r| --- | --- |\r| TP | True Positive |\r\r- **목록** 항목";
@@ -270,9 +309,15 @@ Recall = TP / (TP + FN)
 
     var sectionMarkdown = "## 첫 구역\n\n첫 본문\n\n### 하위 구역\n\n하위 본문\n\n## 둘째 구역\n\n둘째 본문";
     var sectionRender = MarkdownPreviewRenderer.Render(sectionMarkdown, root);
-    if (!sectionRender.Contains("data-level='1']>.md-summary>h1{font-size:13.3px}") || sectionRender.Contains("data-level='1']>.md-summary>h1{font-size:19px}")) throw new Exception("노트 제목보다 작은 본문 1단계 제목 크기 적용 실패");
+    if (!sectionRender.Contains("data-level='1']>.md-summary>h1{font-size:calc(13.3px * var(--font-scale))") || sectionRender.Contains("font-size:19px")) throw new Exception("노트 제목보다 작은 본문 1단계 제목 크기 적용 실패");
+    var themedRender = MarkdownPreviewRenderer.Render(sectionMarkdown, root, initialScrollY: 0, fontScale: 1.2, accentColor: "#6CB6FF");
+    if (!themedRender.Contains(":root{--font-scale:1.2;--accent:#6CB6FF}")
+        || !themedRender.Contains("color:var(--accent)"))
+        throw new Exception("미리보기 글자 크기와 강조색 설정 적용 실패");
     if (!sectionRender.Contains("document.addEventListener('click'")
         || !sectionRender.Contains("type: 'focus-editor', offset")
+        || !sectionRender.Contains("type: 'hover-editor', offset, endOffset")
+        || !sectionRender.Contains("type: 'hover-editor-clear'")
         || !sectionRender.Contains("data-source-offset=\"0\"")
         || sectionRender.Contains("document.addEventListener('dblclick'"))
         throw new Exception("미리보기 클릭 원문 위치 연결 실패");
@@ -286,6 +331,20 @@ Recall = TP / (TP + FN)
     if (!sectionRender.Contains("if (sectionCount)")) throw new Exception("제목 없는 노트의 미리보기 상호작용 연결 실패");
     if (!sectionRender.Contains("heading.title = '클릭해서 접기 또는 펼치기'") || sectionRender.Contains("update-section") || sectionRender.Contains("section-editor") || sectionRender.Contains("beginEditing")) throw new Exception("수준별 편집 제거 및 제목 접기 연결 실패");
     if (!sectionRender.Contains("initialFoldStates[foldKey] : true")) throw new Exception("제목 구역 기본 펼침 상태 적용 실패");
+    if (!sectionRender.Contains("exclusiveSections")
+        || !sectionRender.Contains("details.parentElement?.children")
+        || !sectionRender.Contains("openSiblings.slice(1)"))
+        throw new Exception("동일 수준 제목 상호 배타 접기 실패");
+
+    var guideService = new BuiltInGuideService();
+    var guideItems = guideService.BuildItems(
+        new HashSet<string>([BuiltInGuideService.FolderPath], StringComparer.OrdinalIgnoreCase),
+        null);
+    if (guideItems.Count < 5
+        || guideItems[0] is not { IsFolder: true, IsVirtual: true }
+        || guideItems.Skip(1).Any(item => item.Note is not { IsReadOnly: true })
+        || guideService.FindByTitle("마크다운 사용법") is null)
+        throw new Exception("읽기 전용 Asterism 안내 문서 구성 실패");
 
     var rememberedFoldRender = MarkdownPreviewRenderer.Render("# Section\n\nBody", root, null, new Dictionary<string, bool> { ["1:Section#1"] = false });
     if (!rememberedFoldRender.Contains("\"1:Section#1\":false")

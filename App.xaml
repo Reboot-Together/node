@@ -1,12 +1,14 @@
 <Application
     x:Class="AsterismApp.App"
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
-    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:local="using:AsterismApp">
   <Application.Resources>
     <ResourceDictionary>
     <ResourceDictionary.MergedDictionaries>
       <XamlControlsResources xmlns="using:Microsoft.UI.Xaml.Controls" />
     </ResourceDictionary.MergedDictionaries>
+    <local:TypographySettings x:Key="Typography" />
     <SolidColorBrush x:Key="AppBackground" Color="#181818" />
     <SolidColorBrush x:Key="SidebarBackground" Color="#202020" />
     <SolidColorBrush x:Key="InspectorBackground" Color="#202020" />
@@ -37,21 +39,21 @@
       <Setter Property="BorderBrush" Value="#303030" />
       <Setter Property="CornerRadius" Value="4" />
       <Setter Property="Padding" Value="10,7" />
-      <Setter Property="FontSize" Value="9.1" />
+      <Setter Property="FontSize" Value="{Binding Ui, Source={StaticResource Typography}}" />
     </Style>
     <Style x:Key="AccentButton" TargetType="Button">
       <Setter Property="Background" Value="{StaticResource Accent}" />
       <Setter Property="Foreground" Value="#F0F0F0" />
       <Setter Property="CornerRadius" Value="5" />
       <Setter Property="Padding" Value="12,7" />
-      <Setter Property="FontSize" Value="8.4" />
+      <Setter Property="FontSize" Value="{Binding Small, Source={StaticResource Typography}}" />
     </Style>
     <Style x:Key="QuietButton" TargetType="Button">
       <Setter Property="Background" Value="#252526" />
       <Setter Property="Foreground" Value="#CCCCCC" />
       <Setter Property="CornerRadius" Value="4" />
       <Setter Property="Padding" Value="11,7" />
-      <Setter Property="FontSize" Value="8.4" />
+      <Setter Property="FontSize" Value="{Binding Small, Source={StaticResource Typography}}" />
     </Style>
     </ResourceDictionary>
   </Application.Resources>

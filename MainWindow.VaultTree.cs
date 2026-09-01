@@ -26,6 +26,11 @@ public sealed partial class MainWindow
         if (sender is not FrameworkElement element || element.Tag is not string path) return;
         var item = FindVaultItem(path);
         if (item is null) return;
+        if (item.IsVirtual)
+        {
+            e.Handled = true;
+            return;
+        }
 
         _contextNote = item.Note;
         _contextFolder = item.IsFolder ? item.Path : null;
@@ -51,6 +56,8 @@ public sealed partial class MainWindow
         }
         else
         {
+            menu.Items.Add(MenuItem("옆에 열기", OpenNoteToSide_Click));
+            menu.Items.Add(new MenuFlyoutSeparator());
             menu.Items.Add(MenuItem("이름 변경", RenameNote_Click));
             menu.Items.Add(MenuItem("복사본 만들기", DuplicateNote_Click));
             menu.Items.Add(MenuItem("폴더로 이동", MoveNote_Click));
@@ -79,7 +86,7 @@ public sealed partial class MainWindow
     private void NoteList_DragItemsStarting(object sender, DragItemsStartingEventArgs e)
     {
         _draggedItem = e.Items.OfType<VaultItem>().FirstOrDefault();
-        if (_draggedItem is null || _draggedItem.IsRoot)
+        if (_draggedItem is null || _draggedItem.IsRoot || _draggedItem.IsVirtual)
         {
             e.Cancel = true;
             return;
@@ -142,7 +149,7 @@ public sealed partial class MainWindow
 
     private static bool CanDrop(VaultItem? source, VaultItem? target)
     {
-        if (source is null || source.IsRoot || target is not { IsFolder: true }) return false;
+        if (source is null || source.IsRoot || source.IsVirtual || target is not { IsFolder: true } || target.IsVirtual) return false;
         var sourceParent = Path.GetDirectoryName(source.Path);
         if (sourceParent?.Equals(target.Path, StringComparison.OrdinalIgnoreCase) == true) return false;
         if (!source.IsFolder) return true;

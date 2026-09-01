@@ -36,15 +36,6 @@ public static class GraphViewportService
 
     public static double VisualScale(double zoom) => Math.Clamp(zoom, .28, 1.35);
 
-    public static double RotationDurationSeconds(double zoom)
-    {
-        zoom = Math.Clamp(zoom, MinimumZoom, MaximumZoom);
-        if (zoom >= MaximumZoom - .001) return 0;
-
-        var intensity = (MaximumZoom - zoom) / (MaximumZoom - MinimumZoom);
-        return 10 + 50 * Math.Pow(1 - intensity, 2);
-    }
-
     public static double NodeRadius(double zoom, bool selected, int degree)
     {
         var baseRadius = selected ? 3.5 : 1.75;

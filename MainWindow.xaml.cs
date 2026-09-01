@@ -4,6 +4,7 @@ using Microsoft.UI.Input;
 using Microsoft.UI.Dispatching;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
+using Microsoft.UI.Xaml.Controls.Primitives;
 using Microsoft.UI.Xaml.Input;
 using Microsoft.UI.Xaml.Media;
 using Microsoft.Web.WebView2.Core;
@@ -21,6 +22,7 @@ public sealed partial class MainWindow : Window
     private readonly NoteLinkService _linkService = new();
     private readonly NoteImageService _imageService = new();
     private readonly VaultTreeService _vaultTreeService = new();
+    private readonly BuiltInGuideService _guideService = new();
     private readonly DispatcherQueueTimer _saveTimer;
     private readonly DispatcherQueueTimer _previewTimer;
     private List<NoteInfo> _notes = [];
@@ -28,21 +30,18 @@ public sealed partial class MainWindow : Window
     private IReadOnlyList<VaultItem> _vaultItems = [];
     private IReadOnlyDictionary<string, List<string>> _noteLinks = new Dictionary<string, List<string>>(StringComparer.OrdinalIgnoreCase);
     private readonly HashSet<string> _expandedFolders = new(StringComparer.OrdinalIgnoreCase);
+    private bool _folderExpansionInitialized;
     private readonly Dictionary<string, Dictionary<string, bool>> _noteFoldStates = new(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<string, double> _notePreviewScrollPositions = new(StringComparer.OrdinalIgnoreCase);
     private NoteInfo? _selected;
     private bool _loading;
     private bool _previewReady;
     private UiLayoutSettings _uiLayoutSettings = UiLayoutSettings.Default;
-    private bool _documentSplitterDragging;
-    private uint _documentSplitterPointerId;
-    private double _documentSplitterStartY;
-    private double _documentSplitterStartPreviewHeight;
-    private bool _inspectorSplitterDragging;
-    private uint _inspectorSplitterPointerId;
-    private double _inspectorSplitterStartX;
-    private double _inspectorSplitterStartWidth;
     private ScrollViewer? _editorScrollViewer;
+    private bool _previewHoverSelectionActive;
+    private int _previewHoverOriginalStart;
+    private int _previewHoverOriginalLength;
+    private int _previewHoverSelectionRevision;
 
     public MainWindow()
     {
@@ -54,10 +53,10 @@ public sealed partial class MainWindow : Window
             handledEventsToo: true);
         ConfigureTitleBar();
         _uiLayoutSettings = _uiLayoutSettingsService.Load();
+        ApplyAppearanceSettings(refreshContent: false);
         ApplyDocumentSplit(_uiLayoutSettings.PreviewRatio);
         ApplyExplorerState(_uiLayoutSettings.ExplorerCollapsed);
         ApplyInspectorWidth(_uiLayoutSettings.InspectorWidth);
-        CurrentVersionText.Text = $"v{UpdateService.CurrentVersionText}";
         var iconPath = Path.Combine(AppContext.BaseDirectory, "Assets", "Asterism.ico");
         if (File.Exists(iconPath)) AppWindow.SetIcon(iconPath);
         AppWindow.Resize(new SizeInt32(1440, 920));
@@ -74,6 +73,7 @@ public sealed partial class MainWindow : Window
         if (_notes.Count == 0) NewNote(); else Select(_notes[0]);
         Closed += (_, _) =>
         {
+            SaveSideDocuments();
             SaveCurrent();
             _uiLayoutSettingsService.Save(_uiLayoutSettings);
             StopSemanticIndexing();
@@ -84,8 +84,13 @@ public sealed partial class MainWindow : Window
     {
         _notes = _repository.Load();
         _folders = _vaultTreeService.LoadFolders(_workspace.RootPath);
+        if (!_folderExpansionInitialized)
+        {
+            _expandedFolders.UnionWith(_folders);
+            _expandedFolders.Add(BuiltInGuideService.FolderPath);
+            _folderExpansionInitialized = true;
+        }
         RefreshLinkIndex();
-        StoragePathText.Text = $"저장 위치: {_workspace.RootPath}";
         ApplySearch();
         QueueSemanticRefresh();
     }
@@ -101,7 +106,9 @@ public sealed partial class MainWindow : Window
     private void ApplySearch()
     {
         var query = SearchBox?.Text.Trim() ?? "";
-        _vaultItems = _vaultTreeService.Build(_workspace.RootPath, _notes, _folders, _expandedFolders, query);
+        var items = _vaultTreeService.Build(_workspace.RootPath, _notes, _folders, _expandedFolders, query).ToList();
+        items.InsertRange(Math.Min(1, items.Count), _guideService.BuildItems(_expandedFolders, query));
+        _vaultItems = items;
         NoteList.ItemsSource = _vaultItems;
         if (_selected is not null)
             NoteList.SelectedItem = _vaultItems.FirstOrDefault(item => item.Note?.Path == _selected.Path);
@@ -120,12 +127,11 @@ public sealed partial class MainWindow : Window
 
     private void Select(NoteInfo note, bool focusEditor = false)
     {
+        _previewHoverSelectionActive = false;
+        _previewHoverSelectionRevision++;
         _loading = true;
         _selected = note;
         TitleBox.Text = note.Title;
-        CategoryBox.Text = note.Metadata.Category;
-        SourceBox.Text = note.Metadata.Source;
-        TypeBox.Text = note.Metadata.Type;
         Editor.Text = note.Body;
         RevealNoteInTree(note);
         _loading = false;
@@ -144,8 +150,11 @@ public sealed partial class MainWindow : Window
             SearchBox.Text = "";
             treeChanged = true;
         }
-        foreach (var folder in _vaultTreeService.AncestorFolders(_workspace.RootPath, note.Path))
-            treeChanged |= _expandedFolders.Add(folder);
+        if (note.IsReadOnly)
+            treeChanged |= _expandedFolders.Add(BuiltInGuideService.FolderPath);
+        else
+            foreach (var folder in _vaultTreeService.AncestorFolders(_workspace.RootPath, note.Path))
+                treeChanged |= _expandedFolders.Add(folder);
 
         var item = treeChanged
             ? null
@@ -164,15 +173,11 @@ public sealed partial class MainWindow : Window
         });
     }
 
-    private NoteMetadata MetadataFromEditor() => new(
-        string.IsNullOrWhiteSpace(CategoryBox.Text) ? "Inbox" : CategoryBox.Text.Trim(),
-        _selected?.Metadata.Created ?? DateTime.Today,
-        string.IsNullOrWhiteSpace(SourceBox.Text) ? "Manual" : SourceBox.Text.Trim(),
-        string.IsNullOrWhiteSpace(TypeBox.Text) ? "Note" : TypeBox.Text.Trim());
+    private NoteMetadata MetadataFromEditor() => _selected?.Metadata ?? NoteMetadata.Manual;
 
     private void SaveCurrent()
     {
-        if (_loading || _selected is null) return;
+        if (_loading || _selected is null || _selected.IsReadOnly) return;
         _saveTimer.Stop();
         var previous = _selected;
         var metadata = MetadataFromEditor();
@@ -212,25 +217,10 @@ public sealed partial class MainWindow : Window
         if (titleChanged || bodyChanged) QueueSemanticRefresh();
     }
 
-    private void OpenDailyNote()
-    {
-        SaveCurrent();
-        var today = DateTime.Today;
-        var note = _notes.FirstOrDefault(item => item.Metadata.Type.Equals("Daily", StringComparison.OrdinalIgnoreCase) && item.Metadata.Created.Date == today);
-        if (note is null)
-        {
-            var metadata = new NoteMetadata("Journal", today, "Daily", "Daily");
-            note = _repository.Create(today.ToString("yyyy-MM-dd"), metadata);
-            note = _repository.Save(note.Path, note.Title, "## 오늘 공부\n\n- \n\n## 메모\n\n", metadata);
-            RefreshNotes();
-        }
-        Select(note);
-    }
-
     private void Editor_TextChanged(object sender, TextChangedEventArgs e)
     {
         if (_loading) return;
-        if (_selected is not null)
+        if (_selected is { IsReadOnly: false })
         {
             _saveTimer.Stop();
             _saveTimer.Start();
@@ -239,9 +229,9 @@ public sealed partial class MainWindow : Window
         }
     }
 
-    private void NoteField_TextChanged(object sender, TextChangedEventArgs e)
+    private void TitleBox_TextChanged(object sender, TextChangedEventArgs e)
     {
-        if (!_loading && _selected is not null)
+        if (!_loading && _selected is { IsReadOnly: false })
         {
             _saveTimer.Stop();
             _saveTimer.Start();
@@ -357,50 +347,46 @@ public sealed partial class MainWindow : Window
 
     private void ShowEditorAndPreview()
     {
-        Editor.Visibility = Visibility.Visible;
-        EditorPreviewDivider.Visibility = Visibility.Visible;
+        var readOnly = _selected?.IsReadOnly == true;
+        DocumentKindText.Text = readOnly ? "GUIDE" : "NOTE";
+        ReadOnlyBadge.Visibility = readOnly ? Visibility.Visible : Visibility.Collapsed;
+        TitleBox.IsReadOnly = readOnly;
+        Editor.IsReadOnly = readOnly;
+        EditorContainer.Visibility = readOnly ? Visibility.Collapsed : Visibility.Visible;
+        EditorPreviewDivider.Visibility = readOnly ? Visibility.Collapsed : Visibility.Visible;
         MarkdownPreview.Visibility = Visibility.Visible;
-        ApplyDocumentSplit(_uiLayoutSettings.PreviewRatio);
+        if (readOnly)
+        {
+            PreviewRow.Height = new GridLength(1, GridUnitType.Star);
+            EditorDividerRow.Height = new GridLength(0);
+            EditorRow.MinHeight = 0;
+            EditorRow.Height = new GridLength(0);
+        }
+        else
+        {
+            EditorDividerRow.Height = new GridLength(8);
+            EditorRow.MinHeight = 130;
+            ApplyDocumentSplit(_uiLayoutSettings.PreviewRatio);
+        }
         UpdateMarkdownPreview();
     }
 
-    private void EditorPreviewDivider_PointerPressed(object sender, PointerRoutedEventArgs e)
+    private void EditorPreviewDivider_DragDelta(object sender, DragDeltaEventArgs e)
     {
-        if (!e.GetCurrentPoint(EditorPreviewDivider).Properties.IsLeftButtonPressed) return;
-
-        _documentSplitterDragging = true;
-        _documentSplitterPointerId = e.Pointer.PointerId;
-        _documentSplitterStartY = e.GetCurrentPoint(DocumentWorkspace).Position.Y;
-        _documentSplitterStartPreviewHeight = PreviewRow.ActualHeight;
-        EditorPreviewDivider.CapturePointer(e.Pointer);
-        e.Handled = true;
-    }
-
-    private void EditorPreviewDivider_PointerMoved(object sender, PointerRoutedEventArgs e)
-    {
-        if (!_documentSplitterDragging || e.Pointer.PointerId != _documentSplitterPointerId) return;
-
         var availableHeight = DocumentWorkspace.ActualHeight - EditorPreviewDivider.ActualHeight;
         if (availableHeight <= 0) return;
-        var currentY = e.GetCurrentPoint(DocumentWorkspace).Position.Y;
         var minimumPreviewHeight = Math.Min(180, availableHeight * .5);
         var minimumEditorHeight = Math.Min(150, availableHeight * .4);
         var previewHeight = Math.Clamp(
-            _documentSplitterStartPreviewHeight + currentY - _documentSplitterStartY,
+            PreviewRow.ActualHeight + e.VerticalChange,
             minimumPreviewHeight,
             availableHeight - minimumEditorHeight);
         ApplyDocumentSplit(previewHeight / availableHeight);
-        e.Handled = true;
     }
 
-    private void EditorPreviewDivider_PointerReleased(object sender, PointerRoutedEventArgs e)
+    private void EditorPreviewDivider_DragCompleted(object sender, DragCompletedEventArgs e)
     {
-        if (!_documentSplitterDragging || e.Pointer.PointerId != _documentSplitterPointerId) return;
-
-        _documentSplitterDragging = false;
-        EditorPreviewDivider.ReleasePointerCapture(e.Pointer);
         _uiLayoutSettingsService.Save(_uiLayoutSettings);
-        e.Handled = true;
     }
 
     private void ApplyDocumentSplit(double previewRatio)
@@ -449,43 +435,22 @@ public sealed partial class MainWindow : Window
         DispatcherQueue.TryEnqueue(() => DrawGraph());
     }
 
-    private void InspectorDivider_PointerPressed(object sender, PointerRoutedEventArgs e)
+    private void InspectorDivider_DragDelta(object sender, DragDeltaEventArgs e)
     {
-        if (!e.GetCurrentPoint(InspectorDivider).Properties.IsLeftButtonPressed) return;
-
-        _inspectorSplitterDragging = true;
-        _inspectorSplitterPointerId = e.Pointer.PointerId;
-        _inspectorSplitterStartX = e.GetCurrentPoint(Root).Position.X;
-        _inspectorSplitterStartWidth = InspectorColumn.ActualWidth;
-        InspectorDivider.CapturePointer(e.Pointer);
-        e.Handled = true;
-    }
-
-    private void InspectorDivider_PointerMoved(object sender, PointerRoutedEventArgs e)
-    {
-        if (!_inspectorSplitterDragging || e.Pointer.PointerId != _inspectorSplitterPointerId) return;
-
-        var currentX = e.GetCurrentPoint(Root).Position.X;
         var maximumWidth = Math.Clamp(
             Root.ActualWidth - ExplorerColumn.ActualWidth - InspectorDividerColumn.ActualWidth - 420,
             240,
             720);
         ApplyInspectorWidth(Math.Clamp(
-            _inspectorSplitterStartWidth + _inspectorSplitterStartX - currentX,
+            InspectorColumn.ActualWidth - e.HorizontalChange,
             240,
             maximumWidth));
-        e.Handled = true;
     }
 
-    private void InspectorDivider_PointerReleased(object sender, PointerRoutedEventArgs e)
+    private void InspectorDivider_DragCompleted(object sender, DragCompletedEventArgs e)
     {
-        if (!_inspectorSplitterDragging || e.Pointer.PointerId != _inspectorSplitterPointerId) return;
-
-        _inspectorSplitterDragging = false;
-        InspectorDivider.ReleasePointerCapture(e.Pointer);
         _uiLayoutSettingsService.Save(_uiLayoutSettings);
         DispatcherQueue.TryEnqueue(() => DrawGraph());
-        e.Handled = true;
     }
 
     private void ApplyInspectorWidth(double width)
@@ -522,12 +487,15 @@ public sealed partial class MainWindow : Window
     private void UpdateMarkdownPreview()
     {
         if (!_previewReady) return;
+        ClearPreviewHoverSelection();
         MarkdownPreview.NavigateToString(MarkdownPreviewRenderer.Render(
             Editor.Text,
             _workspace.RootPath,
             ResolveNoteBody,
             CurrentFoldStates(),
-            CurrentPreviewScrollY()));
+            CurrentPreviewScrollY(),
+            _uiLayoutSettings.FontScale,
+            CurrentAccent.CssColor));
     }
 
     private Dictionary<string, bool> CurrentFoldStates()
@@ -579,6 +547,8 @@ public sealed partial class MainWindow : Window
             }
             else if (type.GetString() == "focus-editor")
             {
+                if (_selected?.IsReadOnly == true) return;
+                ClearPreviewHoverSelection(restoreOriginalSelection: false);
                 var offset = root.TryGetProperty("offset", out var offsetElement) && offsetElement.TryGetInt32(out var requestedOffset)
                     ? MarkdownText.OriginalOffsetFromNormalized(Editor.Text, Math.Max(0, requestedOffset))
                     : Editor.SelectionStart;
@@ -589,8 +559,72 @@ public sealed partial class MainWindow : Window
                     DispatcherQueue.TryEnqueue(() => CenterEditorOnCharacter(offset));
                 });
             }
+            else if (type.GetString() == "hover-editor"
+                && root.TryGetProperty("offset", out var hoverOffsetElement)
+                && hoverOffsetElement.TryGetInt32(out var hoverOffset))
+            {
+                var hoverEndOffset = root.TryGetProperty("endOffset", out var hoverEndElement)
+                    && hoverEndElement.TryGetInt32(out var requestedEndOffset)
+                        ? requestedEndOffset
+                        : -1;
+                ShowPreviewHoverSelection(hoverOffset, hoverEndOffset);
+            }
+            else if (type.GetString() == "hover-editor-clear")
+            {
+                ClearPreviewHoverSelection();
+            }
         }
         catch { }
+    }
+
+    private void ShowPreviewHoverSelection(int normalizedStart, int normalizedEnd)
+    {
+        if (!_previewHoverSelectionActive)
+        {
+            _previewHoverOriginalStart = Editor.SelectionStart;
+            _previewHoverOriginalLength = Editor.SelectionLength;
+            _previewHoverSelectionActive = true;
+        }
+
+        var start = MarkdownText.OriginalOffsetFromNormalized(Editor.Text, Math.Max(0, normalizedStart));
+        var end = normalizedEnd > normalizedStart
+            ? MarkdownText.OriginalOffsetFromNormalized(Editor.Text, normalizedEnd)
+            : Editor.Text.Length;
+        start = Math.Clamp(start, 0, Editor.Text.Length);
+        end = Math.Clamp(end, start, Editor.Text.Length);
+        while (end > start && Editor.Text[end - 1] is '\r' or '\n') end--;
+        SelectEditorRangeWithoutScrolling(start, Math.Max(0, end - start));
+    }
+
+    private void ClearPreviewHoverSelection(bool restoreOriginalSelection = true)
+    {
+        if (!_previewHoverSelectionActive) return;
+        _previewHoverSelectionActive = false;
+        if (restoreOriginalSelection)
+        {
+            var start = Math.Clamp(_previewHoverOriginalStart, 0, Editor.Text.Length);
+            var length = Math.Clamp(_previewHoverOriginalLength, 0, Editor.Text.Length - start);
+            SelectEditorRangeWithoutScrolling(start, length);
+        }
+        else
+        {
+            _previewHoverSelectionRevision++;
+        }
+    }
+
+    private void SelectEditorRangeWithoutScrolling(int start, int length)
+    {
+        var scrollViewer = EditorScrollViewer();
+        var verticalOffset = scrollViewer?.VerticalOffset;
+        Editor.Select(start, length);
+        if (scrollViewer is null || verticalOffset is null) return;
+
+        var revision = ++_previewHoverSelectionRevision;
+        DispatcherQueue.TryEnqueue(() =>
+        {
+            if (revision == _previewHoverSelectionRevision)
+                scrollViewer.ChangeView(null, verticalOffset.Value, null, true);
+        });
     }
 
     private void CenterEditorOnCharacter(int offset)
@@ -623,6 +657,27 @@ public sealed partial class MainWindow : Window
     private ScrollViewer? EditorScrollViewer()
         => _editorScrollViewer ??= FindVisualDescendant<ScrollViewer>(Editor);
 
+    private void Editor_Loaded(object sender, RoutedEventArgs e)
+    {
+        _editorScrollViewer = FindVisualDescendant<ScrollViewer>(Editor);
+        foreach (var scrollBar in FindVisualDescendants<ScrollBar>(Editor))
+        {
+            if (scrollBar.Orientation != Orientation.Vertical) continue;
+            scrollBar.Width = 8;
+            scrollBar.MinWidth = 8;
+        }
+    }
+
+    private static IEnumerable<T> FindVisualDescendants<T>(DependencyObject parent) where T : DependencyObject
+    {
+        for (var index = 0; index < VisualTreeHelper.GetChildrenCount(parent); index++)
+        {
+            var child = VisualTreeHelper.GetChild(parent, index);
+            if (child is T match) yield return match;
+            foreach (var descendant in FindVisualDescendants<T>(child)) yield return descendant;
+        }
+    }
+
     private static T? FindVisualDescendant<T>(DependencyObject parent) where T : DependencyObject
     {
         for (var index = 0; index < VisualTreeHelper.GetChildrenCount(parent); index++)
@@ -634,7 +689,11 @@ public sealed partial class MainWindow : Window
         return null;
     }
 
-    private string? ResolveNoteBody(string title) => _notes.FirstOrDefault(note => note.Title.Equals(title, StringComparison.OrdinalIgnoreCase))?.Body;
+    private NoteInfo? FindNoteByTitle(string title) =>
+        _notes.FirstOrDefault(note => note.Title.Equals(title, StringComparison.OrdinalIgnoreCase))
+        ?? _guideService.FindByTitle(title);
+
+    private string? ResolveNoteBody(string title) => FindNoteByTitle(title)?.Body;
 
     private void MarkdownPreview_NavigationStarting(WebView2 sender, CoreWebView2NavigationStartingEventArgs args)
     {
@@ -643,7 +702,7 @@ public sealed partial class MainWindow : Window
         {
             args.Cancel = true;
             var title = Uri.UnescapeDataString(uri.AbsolutePath.Trim('/'));
-            var note = _notes.FirstOrDefault(item => item.Title.Equals(title, StringComparison.OrdinalIgnoreCase));
+            var note = FindNoteByTitle(title);
             if (note is not null) Select(note);
         }
         else if (uri.Scheme is "http" or "https")
@@ -653,8 +712,6 @@ public sealed partial class MainWindow : Window
         }
     }
     private void Search_TextChanged(object sender, TextChangedEventArgs e) { if (!_loading) ApplySearch(); }
-    private void NewNote_Click(object sender, RoutedEventArgs e) => NewNote();
-    private void DailyNote_Click(object sender, RoutedEventArgs e) => OpenDailyNote();
     private void Refresh_Click(object sender, RoutedEventArgs e)
     {
         var selectedPath = _selected?.Path;
