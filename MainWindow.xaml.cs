@@ -5,6 +5,7 @@ using Microsoft.UI.Dispatching;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Input;
+using Microsoft.UI.Xaml.Media;
 using Microsoft.Web.WebView2.Core;
 using Windows.ApplicationModel.DataTransfer;
 using Windows.Graphics;
@@ -20,6 +21,7 @@ public sealed partial class MainWindow : Window
     private readonly NoteImageService _imageService = new();
     private readonly VaultTreeService _vaultTreeService = new();
     private readonly DispatcherQueueTimer _saveTimer;
+    private readonly DispatcherQueueTimer _previewTimer;
     private List<NoteInfo> _notes = [];
     private IReadOnlyList<string> _folders = [];
     private IReadOnlyList<VaultItem> _vaultItems = [];
@@ -42,6 +44,13 @@ public sealed partial class MainWindow : Window
         _saveTimer.Interval = TimeSpan.FromMilliseconds(700);
         _saveTimer.IsRepeating = false;
         _saveTimer.Tick += (_, _) => SaveCurrent();
+        _previewTimer = DispatcherQueue.CreateTimer();
+        _previewTimer.Interval = TimeSpan.FromMilliseconds(350);
+        _previewTimer.IsRepeating = false;
+        _previewTimer.Tick += (_, _) =>
+        {
+            if (!_previewing) UpdateMarkdownPreview();
+        };
         MarkdownPreview.Loaded += MarkdownPreview_Loaded;
         RefreshNotes();
         if (_notes.Count == 0) NewNote(); else Select(_notes[0]);
@@ -194,12 +203,25 @@ public sealed partial class MainWindow : Window
     private void Editor_TextChanged(object sender, TextChangedEventArgs e)
     {
         if (_loading) return;
-        if (_selected is not null) _saveTimer.Start();
+        if (_selected is not null)
+        {
+            _saveTimer.Stop();
+            _saveTimer.Start();
+            if (!_previewing)
+            {
+                _previewTimer.Stop();
+                _previewTimer.Start();
+            }
+        }
     }
 
     private void NoteField_TextChanged(object sender, TextChangedEventArgs e)
     {
-        if (!_loading && _selected is not null) _saveTimer.Start();
+        if (!_loading && _selected is not null)
+        {
+            _saveTimer.Stop();
+            _saveTimer.Start();
+        }
     }
 
     private async void Editor_KeyDown(object sender, KeyRoutedEventArgs e)
@@ -252,7 +274,25 @@ public sealed partial class MainWindow : Window
         SaveAndExitEditor();
     }
 
-    private void Editor_LostFocus(object sender, RoutedEventArgs e) => SaveAndExitEditor();
+    private void Editor_LostFocus(object sender, RoutedEventArgs e)
+    {
+        DispatcherQueue.TryEnqueue(() =>
+        {
+            var focused = FocusManager.GetFocusedElement(Root.XamlRoot) as DependencyObject;
+            if (IsInside(focused, DocumentWorkspace) || MarkdownPreview.FocusState != FocusState.Unfocused) return;
+            SaveAndExitEditor();
+        });
+    }
+
+    private static bool IsInside(DependencyObject? element, DependencyObject container)
+    {
+        while (element is not null)
+        {
+            if (ReferenceEquals(element, container)) return true;
+            element = VisualTreeHelper.GetParent(element);
+        }
+        return false;
+    }
 
     private static bool IsKeyDown(Windows.System.VirtualKey key) => InputKeyboardSource
         .GetKeyStateForCurrentThread(key)
@@ -261,6 +301,7 @@ public sealed partial class MainWindow : Window
     private void SaveAndExitEditor()
     {
         if (_previewing) return;
+        _previewTimer.Stop();
         _saveTimer.Stop();
         SaveCurrent();
         SetPreviewMode(true);
@@ -270,8 +311,26 @@ public sealed partial class MainWindow : Window
     {
         _previewing = preview;
         Editor.Visibility = _previewing ? Visibility.Collapsed : Visibility.Visible;
-        MarkdownPreview.Visibility = _previewing ? Visibility.Visible : Visibility.Collapsed;
-        if (_previewing) UpdateMarkdownPreview();
+        EditorColumn.Width = _previewing ? new GridLength(0) : new GridLength(1, GridUnitType.Star);
+        EditorPreviewDividerColumn.Width = _previewing ? new GridLength(0) : new GridLength(1);
+        EditorPreviewDivider.Visibility = _previewing ? Visibility.Collapsed : Visibility.Visible;
+        MarkdownPreview.Visibility = Visibility.Visible;
+        UpdateMarkdownPreview();
+    }
+
+    private void InspectorCollapse_Click(object sender, RoutedEventArgs e)
+    {
+        InspectorPanel.Visibility = Visibility.Collapsed;
+        InspectorColumn.Width = new GridLength(0);
+        InspectorOpenButton.Visibility = Visibility.Visible;
+    }
+
+    private void InspectorOpen_Click(object sender, RoutedEventArgs e)
+    {
+        InspectorColumn.Width = new GridLength(348);
+        InspectorPanel.Visibility = Visibility.Visible;
+        InspectorOpenButton.Visibility = Visibility.Collapsed;
+        DispatcherQueue.TryEnqueue(DrawGraph);
     }
 
     private async void MarkdownPreview_Loaded(object sender, RoutedEventArgs e)

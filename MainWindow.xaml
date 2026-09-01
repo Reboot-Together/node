@@ -26,7 +26,12 @@
       </Grid>
     </Border>
 
-    <Grid Grid.Row="1" ColumnDefinitions="232,*,348">
+    <Grid Grid.Row="1">
+      <Grid.ColumnDefinitions>
+        <ColumnDefinition Width="232" />
+        <ColumnDefinition Width="*" />
+        <ColumnDefinition x:Name="InspectorColumn" Width="348" />
+      </Grid.ColumnDefinitions>
       <Border Background="{StaticResource SidebarBackground}" BorderBrush="{StaticResource CardBorder}" BorderThickness="0,0,1,0" Padding="10,12,9,10">
         <Grid RowDefinitions="Auto,Auto,*,Auto" RowSpacing="10">
           <Grid ColumnDefinitions="*,Auto" Margin="2,0">
@@ -92,13 +97,19 @@
               <StackPanel Grid.Column="2" Spacing="4"><TextBlock Text="유형" Foreground="{StaticResource MutedText}" FontSize="9" /><TextBox x:Name="TypeBox" Style="{StaticResource Field}" PlaceholderText="Study" TextChanged="NoteField_TextChanged" /></StackPanel>
             </Grid>
           </Border>
-          <Grid Grid.Row="2">
-            <TextBox x:Name="Editor" Background="Transparent" BorderThickness="0" Padding="0,5" AcceptsReturn="True" TextWrapping="Wrap" ScrollViewer.VerticalScrollBarVisibility="Auto" FontFamily="Cascadia Mono" FontSize="12" PlaceholderText="Markdown으로 자유롭게 쓰세요.&#x0a;&#x0a;[[다른 노트 제목]]을 입력하면 자동으로 연결됩니다." TextChanged="Editor_TextChanged" KeyDown="Editor_KeyDown" LostFocus="Editor_LostFocus">
+          <Grid x:Name="DocumentWorkspace" Grid.Row="2">
+            <Grid.ColumnDefinitions>
+              <ColumnDefinition x:Name="EditorColumn" Width="0" />
+              <ColumnDefinition x:Name="EditorPreviewDividerColumn" Width="0" />
+              <ColumnDefinition Width="*" />
+            </Grid.ColumnDefinitions>
+            <TextBox x:Name="Editor" Grid.Column="0" Background="Transparent" BorderThickness="0" Padding="0,5" Margin="0,0,14,0" AcceptsReturn="True" TextWrapping="Wrap" ScrollViewer.VerticalScrollBarVisibility="Auto" FontFamily="Cascadia Mono" FontSize="12" PlaceholderText="Markdown으로 자유롭게 쓰세요.&#x0a;&#x0a;[[다른 노트 제목]]을 입력하면 자동으로 연결됩니다." TextChanged="Editor_TextChanged" KeyDown="Editor_KeyDown" LostFocus="Editor_LostFocus">
               <TextBox.KeyboardAccelerators>
                 <KeyboardAccelerator Key="Enter" Modifiers="Control" Invoked="Editor_SaveAndExit_Invoked" />
               </TextBox.KeyboardAccelerators>
             </TextBox>
-            <WebView2 x:Name="MarkdownPreview" Visibility="Collapsed" DefaultBackgroundColor="#FFFFFF" NavigationStarting="MarkdownPreview_NavigationStarting" />
+            <Border x:Name="EditorPreviewDivider" Grid.Column="1" Width="1" Background="{StaticResource CardBorder}" Visibility="Collapsed" />
+            <WebView2 x:Name="MarkdownPreview" Grid.Column="2" DefaultBackgroundColor="#FFFFFF" NavigationStarting="MarkdownPreview_NavigationStarting" />
           </Grid>
           <Border Grid.Row="3" BorderBrush="{StaticResource CardBorder}" BorderThickness="0,1,0,0" Padding="0,9,0,0">
             <Grid ColumnDefinitions="*,Auto">
@@ -109,12 +120,17 @@
         </Grid>
       </Border>
 
-      <Border Grid.Column="2" Background="{StaticResource InspectorBackground}" BorderBrush="{StaticResource CardBorder}" BorderThickness="1,0,0,0" Padding="12,13,12,10">
+      <Button x:Name="InspectorOpenButton" Grid.Column="1" Content="‹" Style="{StaticResource QuietButton}" Padding="8,5" MinWidth="0" HorizontalAlignment="Right" VerticalAlignment="Top" Margin="0,12,10,0" Visibility="Collapsed" Click="InspectorOpen_Click" ToolTipService.ToolTip="연결 패널 펼치기" Canvas.ZIndex="20" />
+
+      <Border x:Name="InspectorPanel" Grid.Column="2" Background="{StaticResource InspectorBackground}" BorderBrush="{StaticResource CardBorder}" BorderThickness="1,0,0,0" Padding="12,13,12,10">
         <Grid RowDefinitions="Auto,Auto,92,*,Auto" RowSpacing="9">
-          <StackPanel Spacing="2">
-            <TextBlock Text="연결" FontSize="12" FontWeight="SemiBold" />
-            <TextBlock Text="현재 노트의 백링크와 로컬 그래프" Foreground="{StaticResource MutedText}" FontSize="9" />
-          </StackPanel>
+          <Grid ColumnDefinitions="*,Auto">
+            <StackPanel Spacing="2">
+              <TextBlock Text="연결" FontSize="12" FontWeight="SemiBold" />
+              <TextBlock Text="현재 노트의 백링크와 로컬 그래프" Foreground="{StaticResource MutedText}" FontSize="9" />
+            </StackPanel>
+            <Button Grid.Column="1" Content="›" Style="{StaticResource QuietButton}" Padding="8,4" MinWidth="0" Click="InspectorCollapse_Click" ToolTipService.ToolTip="연결 패널 접기" />
+          </Grid>
           <Border Grid.Row="1" Background="#F0F0EE" CornerRadius="6" Padding="9,7">
             <TextBlock x:Name="BacklinkTitle" Foreground="#343434" FontWeight="SemiBold" FontSize="10" />
           </Border>

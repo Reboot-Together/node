@@ -174,6 +174,7 @@ public static class MarkdownPreviewRenderer
                   while (stack.length && stack[stack.length - 1].level >= level) stack.pop();
                   const details = document.createElement('details');
                   details.className = 'md-section';
+                  details.open = true;
                   details.dataset.level = String(level);
                   const summary = document.createElement('summary');
                   summary.className = 'md-summary';
