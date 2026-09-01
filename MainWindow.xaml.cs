@@ -425,7 +425,14 @@ public sealed partial class MainWindow : Window
             }
             else if (type.GetString() == "focus-editor")
             {
-                DispatcherQueue.TryEnqueue(() => Editor.Focus(FocusState.Programmatic));
+                var offset = root.TryGetProperty("offset", out var offsetElement) && offsetElement.TryGetInt32(out var requestedOffset)
+                    ? MarkdownText.OriginalOffsetFromNormalized(Editor.Text, Math.Max(0, requestedOffset))
+                    : Editor.SelectionStart;
+                DispatcherQueue.TryEnqueue(() =>
+                {
+                    Editor.Focus(FocusState.Programmatic);
+                    Editor.Select(offset, 0);
+                });
             }
         }
         catch { }

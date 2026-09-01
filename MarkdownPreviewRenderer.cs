@@ -3,6 +3,8 @@ using System.Text;
 using System.Text.Json;
 using System.Text.RegularExpressions;
 using Markdig;
+using Markdig.Renderers.Html;
+using Markdig.Syntax;
 
 namespace NodeApp;
 
@@ -32,13 +34,34 @@ public static class MarkdownPreviewRenderer
     private static string RenderBody(string markdown, string vaultPath, Func<string, string?>? resolveNote, int depth)
     {
         var prepared = Prepare(MarkdownText.NormalizeNewlines(markdown), vaultPath, resolveNote, depth);
-        return Markdown.ToHtml(prepared, Pipeline);
+        var document = Markdown.Parse(prepared.Text, Pipeline);
+        if (depth == 0)
+        {
+            foreach (var block in document.Descendants<Block>())
+            {
+                if (block.Line < 0 || block.Line >= prepared.SourceOffsets.Count) continue;
+                var attributes = block.GetAttributes();
+                attributes.AddClass("source-position");
+                attributes.AddProperty("data-source-offset", prepared.SourceOffsets[block.Line].ToString());
+            }
+        }
+        return Markdown.ToHtml(document, Pipeline);
     }
 
-    private static string Prepare(string markdown, string vaultPath, Func<string, string?>? resolveNote, int depth)
+    private sealed record PreparedMarkdown(string Text, IReadOnlyList<int> SourceOffsets);
+
+    private static PreparedMarkdown Prepare(string markdown, string vaultPath, Func<string, string?>? resolveNote, int depth)
     {
         var lines = markdown.Split('\n');
+        var lineOffsets = new int[lines.Length];
+        var sourceOffset = 0;
+        for (var index = 0; index < lines.Length; index++)
+        {
+            lineOffsets[index] = sourceOffset;
+            sourceOffset += lines[index].Length + 1;
+        }
         var output = new StringBuilder();
+        var sourceOffsets = new List<int>();
         var fenced = false;
         var comment = false;
 
@@ -49,16 +72,17 @@ public static class MarkdownPreviewRenderer
             if (trimmed.StartsWith("```") || trimmed.StartsWith("~~~"))
             {
                 fenced = !fenced;
-                output.AppendLine(line);
+                AppendMappedLine(output, sourceOffsets, line, lineOffsets[index]);
                 continue;
             }
-            if (fenced) { output.AppendLine(line); continue; }
+            if (fenced) { AppendMappedLine(output, sourceOffsets, line, lineOffsets[index]); continue; }
 
             line = NormalizeMathDelimiters(line);
             line = RemoveComments(line, ref comment);
             var callout = Regex.Match(line, "^>\\s*\\[!([a-zA-Z0-9_-]+)\\]([+-])?\\s*(.*)$");
             if (callout.Success)
             {
+                var calloutSourceOffset = lineOffsets[index];
                 var body = new StringBuilder();
                 while (index + 1 < lines.Length && Regex.IsMatch(lines[index + 1], "^>"))
                 {
@@ -71,14 +95,22 @@ public static class MarkdownPreviewRenderer
                 var inner = depth < 4 ? RenderBody(body.ToString(), vaultPath, resolveNote, depth + 1) : WebUtility.HtmlEncode(body.ToString());
                 var fold = callout.Groups[2].Value;
                 if (fold.Length > 0)
-                    output.AppendLine($"<details class=\"callout\" data-callout=\"{WebUtility.HtmlEncode(type)}\"{(fold == "+" ? " open" : "")}><summary>{WebUtility.HtmlEncode(title)}</summary><div class=\"callout-content\">{inner}</div></details>");
+                    AppendMappedLine(output, sourceOffsets, $"<details class=\"callout\" data-source-offset=\"{calloutSourceOffset}\" data-callout=\"{WebUtility.HtmlEncode(type)}\"{(fold == "+" ? " open" : "")}><summary>{WebUtility.HtmlEncode(title)}</summary><div class=\"callout-content\">{inner}</div></details>", calloutSourceOffset);
                 else
-                    output.AppendLine($"<aside class=\"callout\" data-callout=\"{WebUtility.HtmlEncode(type)}\"><div class=\"callout-title\">{WebUtility.HtmlEncode(title)}</div><div class=\"callout-content\">{inner}</div></aside>");
+                    AppendMappedLine(output, sourceOffsets, $"<aside class=\"callout\" data-source-offset=\"{calloutSourceOffset}\" data-callout=\"{WebUtility.HtmlEncode(type)}\"><div class=\"callout-title\">{WebUtility.HtmlEncode(title)}</div><div class=\"callout-content\">{inner}</div></aside>", calloutSourceOffset);
                 continue;
             }
-            output.AppendLine(TransformWikiLinks(line, vaultPath, resolveNote, depth));
+            AppendMappedLine(output, sourceOffsets, TransformWikiLinks(line, vaultPath, resolveNote, depth), lineOffsets[index]);
         }
-        return output.ToString();
+        return new PreparedMarkdown(output.ToString(), sourceOffsets);
+    }
+
+    private static void AppendMappedLine(StringBuilder output, List<int> sourceOffsets, string text, int sourceOffset)
+    {
+        var normalized = MarkdownText.NormalizeNewlines(text);
+        output.Append(normalized).Append('\n');
+        for (var index = 0; index <= normalized.Count(character => character == '\n'); index++)
+            sourceOffsets.Add(sourceOffset);
     }
 
     private static string NormalizeMathDelimiters(string line)
@@ -178,6 +210,7 @@ public static class MarkdownPreviewRenderer
             .md-section{margin:0;border-bottom:1px solid #ececea}.md-section>.md-summary{display:flex;align-items:flex-start;gap:8px;padding:2px 0;list-style:none;cursor:pointer;user-select:none}.md-section>.md-summary::-webkit-details-marker{display:none}.md-section>.md-summary::before{content:'›';flex:0 0 13px;margin-top:7px;color:#8a8a85;font-size:18px;line-height:1;transition:transform .14s ease}.md-section[open]>.md-summary::before{transform:rotate(90deg)}
             .md-section>.md-summary>h1,.md-section>.md-summary>h2,.md-section>.md-summary>h3,.md-section>.md-summary>h4,.md-section>.md-summary>h5,.md-section>.md-summary>h6{flex:1;margin:0;padding:7px 0;border:0}.md-section[data-level='1']>.md-summary>h1{font-size:19px}.md-section[data-level='2']>.md-summary>h2{font-size:17px}.md-section[data-level='3']>.md-summary>h3{font-size:15px}.md-section[data-level='4']>.md-summary>h4{font-size:13.5px}.md-section[data-level='5']>.md-summary>h5{font-size:12.5px}.md-section[data-level='6']>.md-summary>h6{font-size:11.5px}
             .md-section>.md-section-body{padding:11px 0 15px 21px}.md-section>.md-section-body>.md-section{border-bottom:0;border-top:1px solid #f0f0ed}.md-section>.md-section-body>:last-child{margin-bottom:0}
+            .source-hover{outline:1px solid rgba(13,159,110,.22);outline-offset:3px;border-radius:3px;cursor:text}
             @media(max-width:700px){body{padding:18px 20px 56px}table{font-size:12px}th,td{padding:7px 6px}.md-section>.md-section-body{padding-left:17px} }
           </style>
         </head>
@@ -213,7 +246,7 @@ public static class MarkdownPreviewRenderer
                   summary.className = 'md-summary';
                   const sectionBody = document.createElement('div');
                   sectionBody.className = 'md-section-body';
-                  heading.title = '더블클릭해서 편집기로 이동';
+                  heading.title = '클릭해서 접기 또는 펼치기';
                   summary.appendChild(heading);
                   details.append(summary, sectionBody);
                   (stack.length ? stack[stack.length - 1].body : root).appendChild(details);
@@ -223,12 +256,32 @@ public static class MarkdownPreviewRenderer
                   (stack.length ? stack[stack.length - 1].body : root).appendChild(node);
                 }
               }
-              document.addEventListener('dblclick', event => {
+              const sourceTarget = event => {
                 const element = event.target instanceof Element ? event.target : event.target.parentElement;
-                if (!element || element.closest('.fold-tools,a,button,input,textarea,select')) return;
+                if (!element || element.closest('.fold-tools,a,button,input,textarea,select,summary,img')) return null;
+                if (window.getSelection()?.toString()) return null;
+                return element.closest('[data-source-offset]');
+              };
+              let hoveredSource = null;
+              document.addEventListener('pointermove', event => {
+                const next = sourceTarget(event);
+                if (next === hoveredSource) return;
+                hoveredSource?.classList.remove('source-hover');
+                hoveredSource = next;
+                hoveredSource?.classList.add('source-hover');
+              }, { passive: true });
+              document.addEventListener('pointerleave', () => {
+                hoveredSource?.classList.remove('source-hover');
+                hoveredSource = null;
+              });
+              document.addEventListener('click', event => {
+                const element = sourceTarget(event);
+                if (!element) return;
+                const offset = Number(element.dataset.sourceOffset);
+                if (!Number.isInteger(offset) || offset < 0) return;
                 event.preventDefault();
                 event.stopPropagation();
-                window.chrome.webview.postMessage({ type: 'focus-editor' });
+                window.chrome.webview.postMessage({ type: 'focus-editor', offset });
               });
               if (sectionCount) {
                 const tools = document.createElement('nav');

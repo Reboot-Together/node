@@ -103,21 +103,11 @@
               <ColumnDefinition x:Name="EditorPreviewDividerColumn" Width="0" />
               <ColumnDefinition Width="*" />
             </Grid.ColumnDefinitions>
-            <Border Grid.Column="0" Margin="0,0,14,0" Background="#FAFAF9" BorderBrush="{StaticResource CardBorder}" BorderThickness="1" CornerRadius="8">
-              <Grid RowDefinitions="Auto,*">
-                <Border BorderBrush="{StaticResource CardBorder}" BorderThickness="0,0,0,1" Padding="16,9">
-                  <Grid ColumnDefinitions="Auto,*">
-                    <TextBlock Text="MARKDOWN" Foreground="{StaticResource Positive}" FontFamily="Cascadia Mono" FontSize="9" FontWeight="SemiBold" VerticalAlignment="Center" />
-                    <TextBlock Grid.Column="1" Text="Alt + &lt; &gt; 제목 수준  ·  Ctrl + Enter 저장" Foreground="{StaticResource MutedText}" FontSize="9" HorizontalAlignment="Right" VerticalAlignment="Center" />
-                  </Grid>
-                </Border>
-                <TextBox x:Name="Editor" Grid.Row="1" Background="Transparent" Foreground="#242424" BorderThickness="0" Padding="18,15,16,24" AcceptsReturn="True" TextWrapping="Wrap" ScrollViewer.VerticalScrollBarVisibility="Auto" FontFamily="Cascadia Mono" FontSize="13" CharacterSpacing="8" SelectionHighlightColor="#BFE8DA" IsSpellCheckEnabled="False" PlaceholderText="Markdown으로 자유롭게 쓰세요.&#x0a;&#x0a;[[다른 노트 제목]]을 입력하면 자동으로 연결됩니다." TextChanged="Editor_TextChanged" KeyDown="Editor_KeyDown" LostFocus="Editor_LostFocus">
-                  <TextBox.KeyboardAccelerators>
-                    <KeyboardAccelerator Key="Enter" Modifiers="Control" Invoked="Editor_Save_Invoked" />
-                  </TextBox.KeyboardAccelerators>
-                </TextBox>
-              </Grid>
-            </Border>
+            <TextBox x:Name="Editor" Grid.Column="0" Background="Transparent" BorderThickness="0" Padding="0,5" Margin="0,0,14,0" AcceptsReturn="True" TextWrapping="Wrap" ScrollViewer.VerticalScrollBarVisibility="Auto" FontFamily="Cascadia Mono" FontSize="12" PlaceholderText="Markdown으로 자유롭게 쓰세요.&#x0a;&#x0a;[[다른 노트 제목]]을 입력하면 자동으로 연결됩니다." TextChanged="Editor_TextChanged" KeyDown="Editor_KeyDown" LostFocus="Editor_LostFocus">
+              <TextBox.KeyboardAccelerators>
+                <KeyboardAccelerator Key="Enter" Modifiers="Control" Invoked="Editor_Save_Invoked" />
+              </TextBox.KeyboardAccelerators>
+            </TextBox>
             <Border x:Name="EditorPreviewDivider" Grid.Column="1" Width="1" Background="{StaticResource CardBorder}" Visibility="Collapsed" />
             <WebView2 x:Name="MarkdownPreview" Grid.Column="2" DefaultBackgroundColor="#FFFFFF" NavigationStarting="MarkdownPreview_NavigationStarting" />
           </Grid>

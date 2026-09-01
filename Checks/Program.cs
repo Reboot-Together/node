@@ -141,10 +141,13 @@ Recall = TP / (TP + FN)
 
     var windowsTextBoxMarkdown = "## CR 줄바꿈\r\r| 항목 | 값 |\r| --- | --- |\r| TP | True Positive |\r\r- **목록** 항목";
     var normalizedRender = MarkdownPreviewRenderer.Render(windowsTextBoxMarkdown, root);
-    if (!normalizedRender.Contains("<h2") || !normalizedRender.Contains("<table") || !normalizedRender.Contains("<ul>") || !normalizedRender.Contains("<strong>")) throw new Exception("WinUI CR 줄바꿈 렌더링 실패");
+    if (!normalizedRender.Contains("<h2") || !normalizedRender.Contains("<table") || !normalizedRender.Contains("<ul") || !normalizedRender.Contains("<strong>")) throw new Exception("WinUI CR 줄바꿈 렌더링 실패");
 
     var visibleLineBreakRender = MarkdownPreviewRenderer.Render("첫 줄\n둘째 줄", root);
     if (!visibleLineBreakRender.Contains("첫 줄<br") || !visibleLineBreakRender.Contains("둘째 줄")) throw new Exception("일반 본문 단일 줄바꿈 표시 실패");
+    if (MarkdownText.OriginalOffsetFromNormalized("첫 줄\r\n둘째 줄", 4) != 5
+        || MarkdownText.OriginalOffsetFromNormalized("첫 줄\r\n둘째 줄", 8) != 9)
+        throw new Exception("미리보기 원문 위치의 CRLF 보정 실패");
 
     var promotedHeading = MarkdownHeadingLevelService.Change("## 제목", 5, 0, -1);
     if (!promotedHeading.Changed || promotedHeading.Text != "# 제목" || promotedHeading.SelectionStart != 4) throw new Exception("제목 한 수준 증가 단축키 처리 실패");
@@ -173,9 +176,20 @@ Recall = TP / (TP + FN)
     var sectionMarkdown = "## 첫 구역\n\n첫 본문\n\n### 하위 구역\n\n하위 본문\n\n## 둘째 구역\n\n둘째 본문";
     var sectionRender = MarkdownPreviewRenderer.Render(sectionMarkdown, root);
     if (!sectionRender.Contains("data-level='1']>.md-summary>h1{font-size:19px}") || sectionRender.Contains("data-level='1']>.md-summary>h1{font-size:22px}")) throw new Exception("노트 제목보다 작은 본문 1단계 제목 크기 적용 실패");
-    if (!sectionRender.Contains("document.addEventListener('dblclick'") || !sectionRender.Contains("type: 'focus-editor'") || sectionRender.Contains("document.addEventListener('pointerdown'")) throw new Exception("본문 더블클릭 편집기 포커스 연결 실패");
+    if (!sectionRender.Contains("document.addEventListener('click'")
+        || !sectionRender.Contains("type: 'focus-editor', offset")
+        || !sectionRender.Contains("data-source-offset=\"0\"")
+        || sectionRender.Contains("document.addEventListener('dblclick'"))
+        throw new Exception("미리보기 클릭 원문 위치 연결 실패");
+    var repeatedSourceRender = MarkdownPreviewRenderer.Render("같은 문장\n\n같은 문장", root);
+    if (!repeatedSourceRender.Contains("data-source-offset=\"0\"")
+        || !repeatedSourceRender.Contains("data-source-offset=\"7\""))
+        throw new Exception("반복 문단 원문 위치 구분 실패");
+    var calloutSourceRender = MarkdownPreviewRenderer.Render("앞\n\n> [!note] 제목\n> 본문", root);
+    if (!calloutSourceRender.Contains("class=\"callout\" data-source-offset=\"3\""))
+        throw new Exception("콜아웃 원문 위치 연결 실패");
     if (!sectionRender.Contains("if (sectionCount)")) throw new Exception("제목 없는 노트의 미리보기 상호작용 연결 실패");
-    if (!sectionRender.Contains("heading.title = '더블클릭해서 편집기로 이동'") || sectionRender.Contains("update-section") || sectionRender.Contains("section-editor") || sectionRender.Contains("beginEditing")) throw new Exception("수준별 편집 제거 및 제목 더블클릭 편집기 포커스 연결 실패");
+    if (!sectionRender.Contains("heading.title = '클릭해서 접기 또는 펼치기'") || sectionRender.Contains("update-section") || sectionRender.Contains("section-editor") || sectionRender.Contains("beginEditing")) throw new Exception("수준별 편집 제거 및 제목 접기 연결 실패");
     if (!sectionRender.Contains("initialFoldStates[foldKey] : true")) throw new Exception("제목 구역 기본 펼침 상태 적용 실패");
 
     var rememberedFoldRender = MarkdownPreviewRenderer.Render("# Section\n\nBody", root, null, new Dictionary<string, bool> { ["1:Section#1"] = false });
@@ -192,7 +206,7 @@ Recall = TP / (TP + FN)
 
     var mathRender = MarkdownPreviewRenderer.Render("인라인 $\\sum_{i=1}^{n} x_i$\n\n$$\n\\frac{1}{n} \\sum_{i=1}^{n} x_i\n$$", root);
     if (!mathRender.Contains("<span class=\"math\"")
-        || !mathRender.Contains("<div class=\"math\"")
+        || !System.Text.RegularExpressions.Regex.IsMatch(mathRender, "<div[^>]*class=\\\"[^\\\"]*math")
         || !mathRender.Contains("https://node-assets.local/katex.min.js")
         || !mathRender.Contains("https://node-assets.local/auto-render.min.js")
         || !mathRender.Contains("window.renderMathInElement(root"))
@@ -200,7 +214,7 @@ Recall = TP / (TP + FN)
 
     var chatGptMathRender = MarkdownPreviewRenderer.Render("인라인 \\(x + y\\)\n\n\\[\n\\sum_{i=1}^{n} x_i\n\\]", root);
     if (!chatGptMathRender.Contains("<span class=\"math\">\\(x + y\\)</span>")
-        || !chatGptMathRender.Contains("<div class=\"math\">")
+        || !System.Text.RegularExpressions.Regex.IsMatch(chatGptMathRender, "<div[^>]*class=\\\"[^\\\"]*math")
         || !chatGptMathRender.Contains("\\sum_{i=1}^{n} x_i"))
         throw new Exception("ChatGPT 스타일 LaTeX 구분자 보존 실패");
     if (!UpdateService.TryParseVersion("v0.1.0", out var parsedVersion) || parsedVersion != new Version(0, 1, 0) || UpdateService.TryParseVersion("latest", out _)) throw new Exception("업데이트 버전 분석 실패");
