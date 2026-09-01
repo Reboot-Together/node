@@ -1,5 +1,6 @@
 using System.Net;
 using System.Text;
+using System.Text.Json;
 using System.Text.RegularExpressions;
 using Markdig;
 
@@ -13,14 +14,18 @@ public static class MarkdownPreviewRenderer
         .UseSoftlineBreakAsHardlineBreak()
         .Build();
 
-    public static string Render(string markdown, string vaultPath, Func<string, string?>? resolveNote = null)
+    public static string Render(
+        string markdown,
+        string vaultPath,
+        Func<string, string?>? resolveNote = null,
+        IReadOnlyDictionary<string, bool>? foldStates = null)
     {
         var body = RenderBody(markdown, vaultPath, resolveNote, 0);
         body = Regex.Replace(body, "<script[^>]*>.*?</script>", "", RegexOptions.IgnoreCase | RegexOptions.Singleline);
         body = Regex.Replace(body, "\\s+on[a-z]+\\s*=\\s*(['\"]).*?\\1", "", RegexOptions.IgnoreCase | RegexOptions.Singleline);
         body = Regex.Replace(body, "href=(['\"])javascript:.*?\\1", "href=\"#\"", RegexOptions.IgnoreCase);
         body = Regex.Replace(body, "href=\"(?![a-z]+:|#)([^\"]+?)(?:\\.md)?(?:#[^\"]*)?\"", match => $"href=\"node-note://note/{Uri.EscapeDataString(WebUtility.HtmlDecode(match.Groups[1].Value).Replace("%20", " "))}\"");
-        return HtmlShell(body);
+        return HtmlShell(body, foldStates);
     }
 
     private static string RenderBody(string markdown, string vaultPath, Func<string, string?>? resolveNote, int depth)
@@ -131,8 +136,9 @@ public static class MarkdownPreviewRenderer
         catch { return false; }
     }
 
-    private static string HtmlShell(string body)
+    private static string HtmlShell(string body, IReadOnlyDictionary<string, bool>? foldStates)
     {
+        var serializedFoldStates = JsonSerializer.Serialize(foldStates ?? new Dictionary<string, bool>());
         return $$"""
         <!doctype html>
         <html>
@@ -164,8 +170,10 @@ public static class MarkdownPreviewRenderer
           <script>
             (() => {
               const root = document.body;
+              const initialFoldStates = {{serializedFoldStates}};
               const originalNodes = Array.from(root.childNodes);
               const stack = [];
+              const foldKeyCounts = new Map();
               let sectionCount = 0;
               for (const node of originalNodes) {
                 const heading = node.nodeType === Node.ELEMENT_NODE && /^H[1-6]$/.test(node.tagName) ? node : null;
@@ -174,7 +182,15 @@ public static class MarkdownPreviewRenderer
                   while (stack.length && stack[stack.length - 1].level >= level) stack.pop();
                   const details = document.createElement('details');
                   details.className = 'md-section';
-                  details.open = true;
+                  const foldKeyBase = `${level}:${heading.textContent.trim()}`;
+                  const foldKeyCount = (foldKeyCounts.get(foldKeyBase) || 0) + 1;
+                  foldKeyCounts.set(foldKeyBase, foldKeyCount);
+                  const foldKey = `${foldKeyBase}#${foldKeyCount}`;
+                  details.dataset.foldKey = foldKey;
+                  details.open = Object.hasOwn(initialFoldStates, foldKey) ? initialFoldStates[foldKey] : true;
+                  details.addEventListener('toggle', () => {
+                    window.chrome.webview.postMessage({ type: 'fold-state', key: foldKey, open: details.open });
+                  });
                   details.dataset.level = String(level);
                   const summary = document.createElement('summary');
                   summary.className = 'md-summary';

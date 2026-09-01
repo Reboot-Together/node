@@ -27,6 +27,7 @@ public sealed partial class MainWindow : Window
     private IReadOnlyList<VaultItem> _vaultItems = [];
     private IReadOnlyDictionary<string, List<string>> _noteLinks = new Dictionary<string, List<string>>(StringComparer.OrdinalIgnoreCase);
     private readonly HashSet<string> _expandedFolders = new(StringComparer.OrdinalIgnoreCase);
+    private readonly Dictionary<string, Dictionary<string, bool>> _noteFoldStates = new(StringComparer.OrdinalIgnoreCase);
     private NoteInfo? _selected;
     private bool _loading;
     private bool _previewReady;
@@ -343,7 +344,18 @@ public sealed partial class MainWindow : Window
     private void UpdateMarkdownPreview()
     {
         if (!_previewReady) return;
-        MarkdownPreview.NavigateToString(MarkdownPreviewRenderer.Render(Editor.Text, _workspace.RootPath, ResolveNoteBody));
+        MarkdownPreview.NavigateToString(MarkdownPreviewRenderer.Render(Editor.Text, _workspace.RootPath, ResolveNoteBody, CurrentFoldStates()));
+    }
+
+    private Dictionary<string, bool> CurrentFoldStates()
+    {
+        if (_selected is null) return [];
+        if (!_noteFoldStates.TryGetValue(_selected.Path, out var states))
+        {
+            states = new Dictionary<string, bool>(StringComparer.Ordinal);
+            _noteFoldStates[_selected.Path] = states;
+        }
+        return states;
     }
 
     private void MarkdownPreview_WebMessageReceived(CoreWebView2 sender, CoreWebView2WebMessageReceivedEventArgs args)
@@ -353,7 +365,15 @@ public sealed partial class MainWindow : Window
             using var message = JsonDocument.Parse(args.WebMessageAsJson);
             var root = message.RootElement;
             if (!root.TryGetProperty("type", out var type)) return;
-            if (type.GetString() == "focus-editor")
+            if (type.GetString() == "fold-state"
+                && root.TryGetProperty("key", out var keyElement)
+                && root.TryGetProperty("open", out var openElement)
+                && keyElement.GetString() is { Length: > 0 } key
+                && openElement.ValueKind is JsonValueKind.True or JsonValueKind.False)
+            {
+                CurrentFoldStates()[key] = openElement.GetBoolean();
+            }
+            else if (type.GetString() == "focus-editor")
             {
                 DispatcherQueue.TryEnqueue(() => Editor.Focus(FocusState.Programmatic));
             }

@@ -170,7 +170,13 @@ Recall = TP / (TP + FN)
     if (!sectionRender.Contains("document.addEventListener('dblclick'") || !sectionRender.Contains("type: 'focus-editor'") || sectionRender.Contains("document.addEventListener('pointerdown'")) throw new Exception("본문 더블클릭 편집기 포커스 연결 실패");
     if (sectionRender.IndexOf("document.addEventListener('dblclick'", StringComparison.Ordinal) > sectionRender.IndexOf("if (!sectionCount) return", StringComparison.Ordinal)) throw new Exception("제목 없는 노트의 전체 편집 진입 연결 실패");
     if (!sectionRender.Contains("heading.title = '더블클릭해서 편집기로 이동'") || sectionRender.Contains("update-section") || sectionRender.Contains("section-editor") || sectionRender.Contains("beginEditing")) throw new Exception("수준별 편집 제거 및 제목 더블클릭 편집기 포커스 연결 실패");
-    if (!sectionRender.Contains("details.open = true")) throw new Exception("제목 구역 기본 펼침 상태 적용 실패");
+    if (!sectionRender.Contains("initialFoldStates[foldKey] : true")) throw new Exception("제목 구역 기본 펼침 상태 적용 실패");
+
+    var rememberedFoldRender = MarkdownPreviewRenderer.Render("# Section\n\nBody", root, null, new Dictionary<string, bool> { ["1:Section#1"] = false });
+    if (!rememberedFoldRender.Contains("\"1:Section#1\":false")
+        || !rememberedFoldRender.Contains("type: 'fold-state'")
+        || !rememberedFoldRender.Contains("Object.hasOwn(initialFoldStates, foldKey)"))
+        throw new Exception("미리보기 갱신 시 제목 접힘 상태 복원 실패");
     if (!UpdateService.TryParseVersion("v0.1.0", out var parsedVersion) || parsedVersion != new Version(0, 1, 0) || UpdateService.TryParseVersion("latest", out _)) throw new Exception("업데이트 버전 분석 실패");
     Console.WriteLine("Node checks passed.");
 }
