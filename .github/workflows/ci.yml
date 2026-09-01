@@ -20,11 +20,11 @@ jobs:
 
       - name: Restore
         run: |
-          dotnet restore Node.csproj
-          dotnet restore Checks/Node.Checks.csproj
+          dotnet restore Asterism.csproj
+          dotnet restore Checks/Asterism.Checks.csproj
 
       - name: Build application
-        run: dotnet build Node.csproj -c Release --no-restore
+        run: dotnet build Asterism.csproj -c Release --no-restore
 
       - name: Run checks
-        run: dotnet run --project Checks/Node.Checks.csproj -c Release --no-restore
+        run: dotnet run --project Checks/Asterism.Checks.csproj -c Release --no-restore

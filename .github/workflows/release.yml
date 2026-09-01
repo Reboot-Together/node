@@ -31,33 +31,33 @@ jobs:
           if (-not [System.Version]::TryParse($version, [ref]$parsed) -or $version -notmatch '^\d+\.\d+\.\d+$') {
             throw "Version must use MAJOR.MINOR.PATCH: $version"
           }
-          "NODE_VERSION=$version" | Out-File -FilePath $env:GITHUB_ENV -Append
-          "NODE_TAG=v$version" | Out-File -FilePath $env:GITHUB_ENV -Append
+          "ASTERISM_VERSION=$version" | Out-File -FilePath $env:GITHUB_ENV -Append
+          "ASTERISM_TAG=v$version" | Out-File -FilePath $env:GITHUB_ENV -Append
 
       - name: Restore
         run: |
-          dotnet restore Node.csproj
-          dotnet restore Checks/Node.Checks.csproj
+          dotnet restore Asterism.csproj
+          dotnet restore Checks/Asterism.Checks.csproj
 
       - name: Build application
-        run: dotnet build Node.csproj -c Release --no-restore
+        run: dotnet build Asterism.csproj -c Release --no-restore
 
       - name: Run checks
-        run: dotnet run --project Checks/Node.Checks.csproj -c Release --no-restore
+        run: dotnet run --project Checks/Asterism.Checks.csproj -c Release --no-restore
 
       - name: Publish self-contained Windows application
         shell: pwsh
         run: |
-          $publishDir = Join-Path $env:GITHUB_WORKSPACE "artifacts\Node-$env:NODE_VERSION-win-x64"
-          dotnet publish Node.csproj -c Release -r win-x64 --self-contained true `
-            -p:Version=$env:NODE_VERSION `
-            -p:AssemblyVersion="$env:NODE_VERSION.0" `
-            -p:FileVersion="$env:NODE_VERSION.0" `
-            -p:InformationalVersion=$env:NODE_VERSION `
+          $publishDir = Join-Path $env:GITHUB_WORKSPACE "artifacts\Asterism-$env:ASTERISM_VERSION-win-x64"
+          dotnet publish Asterism.csproj -c Release -r win-x64 --self-contained true `
+            -p:Version=$env:ASTERISM_VERSION `
+            -p:AssemblyVersion="$env:ASTERISM_VERSION.0" `
+            -p:FileVersion="$env:ASTERISM_VERSION.0" `
+            -p:InformationalVersion=$env:ASTERISM_VERSION `
             -p:DebugType=None -p:DebugSymbols=false `
             --output $publishDir
 
-          foreach ($required in @('App.xbf', 'MainWindow.xbf', 'Node.pri')) {
+          foreach ($required in @('App.xbf', 'MainWindow.xbf', 'Asterism.pri')) {
             if (-not (Test-Path -LiteralPath (Join-Path $publishDir $required))) {
               throw "Required WinUI resource is missing from publish output: $required"
             }
@@ -68,8 +68,8 @@ jobs:
             Where-Object { $_.Name -match $localePattern -and $_.Name -notin @('ko-KR', 'en-US') } |
             Remove-Item -Recurse -Force
 
-          "NODE_SOURCE_DIR=$publishDir" | Out-File -FilePath $env:GITHUB_ENV -Append
-          "NODE_OUTPUT_DIR=$(Join-Path $env:GITHUB_WORKSPACE 'artifacts')" | Out-File -FilePath $env:GITHUB_ENV -Append
+          "ASTERISM_SOURCE_DIR=$publishDir" | Out-File -FilePath $env:GITHUB_ENV -Append
+          "ASTERISM_OUTPUT_DIR=$(Join-Path $env:GITHUB_WORKSPACE 'artifacts')" | Out-File -FilePath $env:GITHUB_ENV -Append
 
       - name: Build installer
         shell: pwsh
@@ -78,24 +78,24 @@ jobs:
           if (-not (Test-Path -LiteralPath $compiler)) {
             choco install innosetup --yes --no-progress
           }
-          & $compiler "installer\Node.iss"
+          & $compiler "installer\Asterism.iss"
           if ($LASTEXITCODE -ne 0) { throw "Inno Setup failed with exit code $LASTEXITCODE" }
 
       - name: Create checksum
         shell: pwsh
         run: |
-          $installer = Get-Item "artifacts\Node-$env:NODE_VERSION-Setup-win-x64.exe"
+          $installer = Get-Item "artifacts\Asterism-$env:ASTERISM_VERSION-Setup-win-x64.exe"
           $hash = (Get-FileHash -LiteralPath $installer.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
-          "$hash  $($installer.Name)" | Set-Content "artifacts\Node-$env:NODE_VERSION-SHA256.txt" -Encoding ascii
+          "$hash  $($installer.Name)" | Set-Content "artifacts\Asterism-$env:ASTERISM_VERSION-SHA256.txt" -Encoding ascii
 
       - name: Create GitHub release
         shell: pwsh
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh release create "$env:NODE_TAG" `
-            "artifacts\Node-$env:NODE_VERSION-Setup-win-x64.exe" `
-            "artifacts\Node-$env:NODE_VERSION-SHA256.txt" `
+          gh release create "$env:ASTERISM_TAG" `
+            "artifacts\Asterism-$env:ASTERISM_VERSION-Setup-win-x64.exe" `
+            "artifacts\Asterism-$env:ASTERISM_VERSION-SHA256.txt" `
             --target "${{ github.sha }}" `
-            --title "Node $env:NODE_TAG" `
+            --title "Asterism $env:ASTERISM_TAG" `
             --generate-notes

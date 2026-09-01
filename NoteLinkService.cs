@@ -1,6 +1,6 @@
 using System.Text.RegularExpressions;
 
-namespace NodeApp;
+namespace AsterismApp;
 
 public sealed class NoteLinkService
 {

@@ -11,11 +11,12 @@ using Windows.ApplicationModel.DataTransfer;
 using Windows.Graphics;
 using Windows.UI.Core;
 
-namespace NodeApp;
+namespace AsterismApp;
 
 public sealed partial class MainWindow : Window
 {
     private readonly WorkspaceService _workspace = new();
+    private readonly UiLayoutSettingsService _uiLayoutSettingsService = new();
     private readonly NoteRepository _repository;
     private readonly NoteLinkService _linkService = new();
     private readonly NoteImageService _imageService = new();
@@ -32,13 +33,32 @@ public sealed partial class MainWindow : Window
     private NoteInfo? _selected;
     private bool _loading;
     private bool _previewReady;
+    private UiLayoutSettings _uiLayoutSettings = UiLayoutSettings.Default;
+    private bool _documentSplitterDragging;
+    private uint _documentSplitterPointerId;
+    private double _documentSplitterStartY;
+    private double _documentSplitterStartPreviewHeight;
+    private bool _inspectorSplitterDragging;
+    private uint _inspectorSplitterPointerId;
+    private double _inspectorSplitterStartX;
+    private double _inspectorSplitterStartWidth;
+    private ScrollViewer? _editorScrollViewer;
 
     public MainWindow()
     {
         _repository = new NoteRepository(_workspace.RootPath);
         InitializeComponent();
+        GraphCanvas.AddHandler(
+            UIElement.PointerWheelChangedEvent,
+            new PointerEventHandler(GraphCanvas_PointerWheelChanged),
+            handledEventsToo: true);
+        ConfigureTitleBar();
+        _uiLayoutSettings = _uiLayoutSettingsService.Load();
+        ApplyDocumentSplit(_uiLayoutSettings.PreviewRatio);
+        ApplyExplorerState(_uiLayoutSettings.ExplorerCollapsed);
+        ApplyInspectorWidth(_uiLayoutSettings.InspectorWidth);
         CurrentVersionText.Text = $"v{UpdateService.CurrentVersionText}";
-        var iconPath = Path.Combine(AppContext.BaseDirectory, "Assets", "Node.ico");
+        var iconPath = Path.Combine(AppContext.BaseDirectory, "Assets", "Asterism.ico");
         if (File.Exists(iconPath)) AppWindow.SetIcon(iconPath);
         AppWindow.Resize(new SizeInt32(1440, 920));
         _saveTimer = DispatcherQueue.CreateTimer();
@@ -52,7 +72,12 @@ public sealed partial class MainWindow : Window
         MarkdownPreview.Loaded += MarkdownPreview_Loaded;
         RefreshNotes();
         if (_notes.Count == 0) NewNote(); else Select(_notes[0]);
-        Closed += (_, _) => SaveCurrent();
+        Closed += (_, _) =>
+        {
+            SaveCurrent();
+            _uiLayoutSettingsService.Save(_uiLayoutSettings);
+            StopSemanticIndexing();
+        };
     }
 
     private void RefreshNotes()
@@ -62,6 +87,7 @@ public sealed partial class MainWindow : Window
         RefreshLinkIndex();
         StoragePathText.Text = $"저장 위치: {_workspace.RootPath}";
         ApplySearch();
+        QueueSemanticRefresh();
     }
 
     private void RefreshLinkIndex() => _noteLinks = _linkService.Build(_notes);
@@ -105,6 +131,7 @@ public sealed partial class MainWindow : Window
         _loading = false;
         ShowEditorAndPreview();
         UpdateBacklinks();
+        UpdateSemanticSuggestions();
         DrawGraph();
         if (focusEditor) DispatcherQueue.TryEnqueue(() => Editor.Focus(FocusState.Programmatic));
     }
@@ -173,6 +200,7 @@ public sealed partial class MainWindow : Window
         }
 
         var titleChanged = !previous.Title.Equals(_selected.Title, StringComparison.Ordinal);
+        var bodyChanged = previous.Body != _selected.Body;
         var metadataChanged = previous.Metadata != _selected.Metadata;
         if (titleChanged || metadataChanged) ApplySearch();
         if (titleChanged || linksChanged)
@@ -181,6 +209,7 @@ public sealed partial class MainWindow : Window
             UpdateBacklinks();
         }
         if (titleChanged || linksChanged || metadataChanged) DrawGraph();
+        if (titleChanged || bodyChanged) QueueSemanticRefresh();
     }
 
     private void OpenDailyNote()
@@ -329,15 +358,82 @@ public sealed partial class MainWindow : Window
     private void ShowEditorAndPreview()
     {
         Editor.Visibility = Visibility.Visible;
-        EditorColumn.Width = new GridLength(1, GridUnitType.Star);
-        EditorPreviewDividerColumn.Width = new GridLength(1);
         EditorPreviewDivider.Visibility = Visibility.Visible;
         MarkdownPreview.Visibility = Visibility.Visible;
+        ApplyDocumentSplit(_uiLayoutSettings.PreviewRatio);
         UpdateMarkdownPreview();
+    }
+
+    private void EditorPreviewDivider_PointerPressed(object sender, PointerRoutedEventArgs e)
+    {
+        if (!e.GetCurrentPoint(EditorPreviewDivider).Properties.IsLeftButtonPressed) return;
+
+        _documentSplitterDragging = true;
+        _documentSplitterPointerId = e.Pointer.PointerId;
+        _documentSplitterStartY = e.GetCurrentPoint(DocumentWorkspace).Position.Y;
+        _documentSplitterStartPreviewHeight = PreviewRow.ActualHeight;
+        EditorPreviewDivider.CapturePointer(e.Pointer);
+        e.Handled = true;
+    }
+
+    private void EditorPreviewDivider_PointerMoved(object sender, PointerRoutedEventArgs e)
+    {
+        if (!_documentSplitterDragging || e.Pointer.PointerId != _documentSplitterPointerId) return;
+
+        var availableHeight = DocumentWorkspace.ActualHeight - EditorPreviewDivider.ActualHeight;
+        if (availableHeight <= 0) return;
+        var currentY = e.GetCurrentPoint(DocumentWorkspace).Position.Y;
+        var minimumPreviewHeight = Math.Min(180, availableHeight * .5);
+        var minimumEditorHeight = Math.Min(150, availableHeight * .4);
+        var previewHeight = Math.Clamp(
+            _documentSplitterStartPreviewHeight + currentY - _documentSplitterStartY,
+            minimumPreviewHeight,
+            availableHeight - minimumEditorHeight);
+        ApplyDocumentSplit(previewHeight / availableHeight);
+        e.Handled = true;
+    }
+
+    private void EditorPreviewDivider_PointerReleased(object sender, PointerRoutedEventArgs e)
+    {
+        if (!_documentSplitterDragging || e.Pointer.PointerId != _documentSplitterPointerId) return;
+
+        _documentSplitterDragging = false;
+        EditorPreviewDivider.ReleasePointerCapture(e.Pointer);
+        _uiLayoutSettingsService.Save(_uiLayoutSettings);
+        e.Handled = true;
+    }
+
+    private void ApplyDocumentSplit(double previewRatio)
+    {
+        previewRatio = Math.Clamp(previewRatio, .3, .85);
+        PreviewRow.Height = new GridLength(previewRatio, GridUnitType.Star);
+        EditorRow.Height = new GridLength(1 - previewRatio, GridUnitType.Star);
+        _uiLayoutSettings = _uiLayoutSettings with { PreviewRatio = previewRatio };
+    }
+
+    private void ExplorerCollapse_Click(object sender, RoutedEventArgs e) => SetExplorerCollapsed(true);
+
+    private void ExplorerOpen_Click(object sender, RoutedEventArgs e) => SetExplorerCollapsed(false);
+
+    private void SetExplorerCollapsed(bool collapsed)
+    {
+        ApplyExplorerState(collapsed);
+        _uiLayoutSettings = _uiLayoutSettings with { ExplorerCollapsed = collapsed };
+        _uiLayoutSettingsService.Save(_uiLayoutSettings);
+    }
+
+    private void ApplyExplorerState(bool collapsed)
+    {
+        ExplorerPanel.Visibility = collapsed ? Visibility.Collapsed : Visibility.Visible;
+        ExplorerColumn.Width = collapsed ? new GridLength(0) : new GridLength(232);
+        ExplorerOpenButton.Visibility = collapsed ? Visibility.Visible : Visibility.Collapsed;
+        DocumentPanel.Padding = collapsed ? new Thickness(42, 18, 28, 12) : new Thickness(28, 18, 28, 12);
     }
 
     private void InspectorCollapse_Click(object sender, RoutedEventArgs e)
     {
+        InspectorDivider.Visibility = Visibility.Collapsed;
+        InspectorDividerColumn.Width = new GridLength(0);
         InspectorPanel.Visibility = Visibility.Collapsed;
         InspectorColumn.Width = new GridLength(0);
         InspectorOpenButton.Visibility = Visibility.Visible;
@@ -345,10 +441,58 @@ public sealed partial class MainWindow : Window
 
     private void InspectorOpen_Click(object sender, RoutedEventArgs e)
     {
-        InspectorColumn.Width = new GridLength(348);
+        InspectorDividerColumn.Width = new GridLength(8);
+        InspectorDivider.Visibility = Visibility.Visible;
+        ApplyInspectorWidth(_uiLayoutSettings.InspectorWidth);
         InspectorPanel.Visibility = Visibility.Visible;
         InspectorOpenButton.Visibility = Visibility.Collapsed;
-        DispatcherQueue.TryEnqueue(DrawGraph);
+        DispatcherQueue.TryEnqueue(() => DrawGraph());
+    }
+
+    private void InspectorDivider_PointerPressed(object sender, PointerRoutedEventArgs e)
+    {
+        if (!e.GetCurrentPoint(InspectorDivider).Properties.IsLeftButtonPressed) return;
+
+        _inspectorSplitterDragging = true;
+        _inspectorSplitterPointerId = e.Pointer.PointerId;
+        _inspectorSplitterStartX = e.GetCurrentPoint(Root).Position.X;
+        _inspectorSplitterStartWidth = InspectorColumn.ActualWidth;
+        InspectorDivider.CapturePointer(e.Pointer);
+        e.Handled = true;
+    }
+
+    private void InspectorDivider_PointerMoved(object sender, PointerRoutedEventArgs e)
+    {
+        if (!_inspectorSplitterDragging || e.Pointer.PointerId != _inspectorSplitterPointerId) return;
+
+        var currentX = e.GetCurrentPoint(Root).Position.X;
+        var maximumWidth = Math.Clamp(
+            Root.ActualWidth - ExplorerColumn.ActualWidth - InspectorDividerColumn.ActualWidth - 420,
+            240,
+            720);
+        ApplyInspectorWidth(Math.Clamp(
+            _inspectorSplitterStartWidth + _inspectorSplitterStartX - currentX,
+            240,
+            maximumWidth));
+        e.Handled = true;
+    }
+
+    private void InspectorDivider_PointerReleased(object sender, PointerRoutedEventArgs e)
+    {
+        if (!_inspectorSplitterDragging || e.Pointer.PointerId != _inspectorSplitterPointerId) return;
+
+        _inspectorSplitterDragging = false;
+        InspectorDivider.ReleasePointerCapture(e.Pointer);
+        _uiLayoutSettingsService.Save(_uiLayoutSettings);
+        DispatcherQueue.TryEnqueue(() => DrawGraph());
+        e.Handled = true;
+    }
+
+    private void ApplyInspectorWidth(double width)
+    {
+        width = Math.Clamp(width, 240, 720);
+        InspectorColumn.Width = new GridLength(width);
+        _uiLayoutSettings = _uiLayoutSettings with { InspectorWidth = width };
     }
 
     private async void MarkdownPreview_Loaded(object sender, RoutedEventArgs e)
@@ -425,6 +569,13 @@ public sealed partial class MainWindow : Window
                 && scrollY >= 0)
             {
                 _notePreviewScrollPositions[_selected.Path] = scrollY;
+                if (root.TryGetProperty("maxY", out var maxYElement)
+                    && maxYElement.TryGetDouble(out var maximumScrollY)
+                    && double.IsFinite(maximumScrollY)
+                    && maximumScrollY > 0)
+                {
+                    SyncEditorToPreview(scrollY / maximumScrollY);
+                }
             }
             else if (type.GetString() == "focus-editor")
             {
@@ -444,7 +595,7 @@ public sealed partial class MainWindow : Window
 
     private void CenterEditorOnCharacter(int offset)
     {
-        var scrollViewer = FindVisualDescendant<ScrollViewer>(Editor);
+        var scrollViewer = EditorScrollViewer();
         if (scrollViewer is null || scrollViewer.ViewportHeight <= 0) return;
 
         var characterBounds = Editor.GetRectFromCharacterIndex(Math.Clamp(offset, 0, Editor.Text.Length), false);
@@ -458,6 +609,19 @@ public sealed partial class MainWindow : Window
             null,
             true);
     }
+
+    private void SyncEditorToPreview(double progress)
+    {
+        var scrollViewer = EditorScrollViewer();
+        if (scrollViewer is null || scrollViewer.ScrollableHeight <= 0) return;
+
+        var targetOffset = scrollViewer.ScrollableHeight * Math.Clamp(progress, 0, 1);
+        if (Math.Abs(scrollViewer.VerticalOffset - targetOffset) < 1) return;
+        scrollViewer.ChangeView(null, targetOffset, null, true);
+    }
+
+    private ScrollViewer? EditorScrollViewer()
+        => _editorScrollViewer ??= FindVisualDescendant<ScrollViewer>(Editor);
 
     private static T? FindVisualDescendant<T>(DependencyObject parent) where T : DependencyObject
     {

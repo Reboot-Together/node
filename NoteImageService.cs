@@ -2,7 +2,7 @@ using Windows.Graphics.Imaging;
 using Windows.Storage;
 using Windows.Storage.Streams;
 
-namespace NodeApp;
+namespace AsterismApp;
 
 public sealed class NoteImageService
 {

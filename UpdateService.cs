@@ -4,9 +4,9 @@ using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
 
-namespace NodeApp;
+namespace AsterismApp;
 
-public sealed record NodeRelease(
+public sealed record AsterismRelease(
     Version Version,
     string Tag,
     string Title,
@@ -31,7 +31,7 @@ public sealed class UpdateService
     public UpdateService()
     {
         _client = new HttpClient { Timeout = TimeSpan.FromMinutes(5) };
-        _client.DefaultRequestHeaders.UserAgent.ParseAdd("Node-Desktop-Updater/1.0");
+        _client.DefaultRequestHeaders.UserAgent.ParseAdd("Asterism-Desktop-Updater/1.0");
         _client.DefaultRequestHeaders.Accept.ParseAdd("application/vnd.github+json");
         _client.DefaultRequestHeaders.CacheControl =
             new System.Net.Http.Headers.CacheControlHeaderValue { NoCache = true };
@@ -50,7 +50,7 @@ public sealed class UpdateService
 
     public static string CurrentVersionText => CurrentVersion.ToString(3);
 
-    public async Task<IReadOnlyList<NodeRelease>> GetStableReleasesAsync(
+    public async Task<IReadOnlyList<AsterismRelease>> GetStableReleasesAsync(
         CancellationToken cancellationToken = default)
     {
         using var response = await _client.GetAsync(
@@ -63,7 +63,7 @@ public sealed class UpdateService
         if (document.RootElement.ValueKind != JsonValueKind.Array)
             throw new InvalidDataException("GitHub 릴리스 목록 형식이 올바르지 않습니다.");
 
-        var releases = new List<NodeRelease>();
+        var releases = new List<AsterismRelease>();
         foreach (var release in document.RootElement.EnumerateArray())
         {
             if (release.TryGetProperty("draft", out var draft) && draft.GetBoolean()) continue;
@@ -82,7 +82,8 @@ public sealed class UpdateService
                 var name = asset.TryGetProperty("name", out var nameElement)
                     ? nameElement.GetString()
                     : null;
-                if (name?.EndsWith("-Setup-win-x64.exe", StringComparison.OrdinalIgnoreCase) == true)
+                if (name?.StartsWith("Asterism-", StringComparison.OrdinalIgnoreCase) == true
+                    && name.EndsWith("-Setup-win-x64.exe", StringComparison.OrdinalIgnoreCase))
                 {
                     installerAsset = asset;
                     break;
@@ -123,10 +124,10 @@ public sealed class UpdateService
                     ? date
                     : DateTimeOffset.MinValue;
 
-            releases.Add(new NodeRelease(
+            releases.Add(new AsterismRelease(
                 version,
                 tag,
-                string.IsNullOrWhiteSpace(title) ? $"Node {tag}" : title,
+                string.IsNullOrWhiteSpace(title) ? $"Asterism {tag}" : title,
                 string.IsNullOrWhiteSpace(notes) ? "등록된 변경 사항이 없습니다." : notes.Trim(),
                 assetUri,
                 sha256,
@@ -138,7 +139,7 @@ public sealed class UpdateService
     }
 
     public async Task PrepareInstallationAsync(
-        NodeRelease release,
+        AsterismRelease release,
         IProgress<int>? progress = null,
         CancellationToken cancellationToken = default)
     {
@@ -149,17 +150,15 @@ public sealed class UpdateService
 
         var executablePath = Environment.ProcessPath;
         if (string.IsNullOrWhiteSpace(executablePath)
-            || !Path.GetFileName(executablePath).Equals("Node.exe", StringComparison.OrdinalIgnoreCase))
-            throw new InvalidOperationException("실행 중인 Node.exe를 확인하지 못했습니다.");
+            || !Path.GetFileName(executablePath).Equals("Asterism.exe", StringComparison.OrdinalIgnoreCase))
+            throw new InvalidOperationException("실행 중인 Asterism.exe를 확인하지 못했습니다.");
 
         var updateDirectory = Path.Combine(
-            Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-            "Node",
-            "Updates",
+            ApplicationDataPaths.UpdatesDirectory,
             release.Version.ToString(3));
         Directory.CreateDirectory(updateDirectory);
 
-        var installerPath = Path.Combine(updateDirectory, "Node-Setup.exe");
+        var installerPath = Path.Combine(updateDirectory, "Asterism-Setup.exe");
         var temporaryPath = installerPath + ".download";
         if (File.Exists(temporaryPath)) File.Delete(temporaryPath);
 
@@ -202,14 +201,18 @@ public sealed class UpdateService
 
             var scriptPath = Path.Combine(updateDirectory, "install-update.ps1");
             var logPath = Path.Combine(updateDirectory, "install-error.log");
-            var installedExecutablePath = Path.Combine(
+            var programsDirectory = Path.Combine(
                 Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-                "Programs",
-                "Node",
-                "Node.exe");
+                "Programs");
+            var installedExecutablePaths = new[]
+            {
+                Path.Combine(programsDirectory, "Asterism", "Asterism.exe"),
+                Path.Combine(programsDirectory, "Node", "Asterism.exe"),
+                Path.Combine(Path.GetDirectoryName(executablePath)!, "Asterism.exe")
+            }.Distinct(StringComparer.OrdinalIgnoreCase).ToArray();
             await File.WriteAllTextAsync(
                 scriptPath,
-                BuildInstallerScript(Environment.ProcessId, installerPath, installedExecutablePath, logPath),
+                BuildInstallerScript(Environment.ProcessId, installerPath, installedExecutablePaths, logPath),
                 Encoding.Unicode,
                 cancellationToken);
 
@@ -283,11 +286,16 @@ public sealed class UpdateService
     private static string BuildInstallerScript(
         int processId,
         string installerPath,
-        string installedExecutablePath,
-        string logPath) => $$"""
+        IReadOnlyList<string> installedExecutablePaths,
+        string logPath)
+    {
+        var pathList = string.Join(",\n    ", installedExecutablePaths.Select(path => $"'{PowerShellQuote(path)}'"));
+        return $$"""
         $ErrorActionPreference = 'Stop'
         $installerPath = '{{PowerShellQuote(installerPath)}}'
-        $installedExecutablePath = '{{PowerShellQuote(installedExecutablePath)}}'
+        $installedExecutablePaths = @(
+            {{pathList}}
+        )
         $logPath = '{{PowerShellQuote(logPath)}}'
 
         try {
@@ -297,8 +305,11 @@ public sealed class UpdateService
             if ($installer.ExitCode -ne 0) {
                 throw "설치 프로그램이 종료 코드 $($installer.ExitCode)를 반환했습니다."
             }
-            if (-not (Test-Path -LiteralPath $installedExecutablePath)) {
-                throw '설치 후 Node.exe를 찾지 못했습니다.'
+            $installedExecutablePath = $installedExecutablePaths |
+                Where-Object { Test-Path -LiteralPath $_ } |
+                Select-Object -First 1
+            if (-not $installedExecutablePath) {
+                throw '설치 후 Asterism.exe를 찾지 못했습니다.'
             }
             Start-Process -FilePath $installedExecutablePath -WorkingDirectory (Split-Path $installedExecutablePath)
         }
@@ -306,6 +317,7 @@ public sealed class UpdateService
             [System.IO.File]::WriteAllText($logPath, ($_ | Out-String))
         }
         """;
+    }
 
     private static string PowerShellQuote(string value) => value.Replace("'", "''");
 }

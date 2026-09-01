@@ -1,4 +1,4 @@
-using NodeApp;
+using AsterismApp;
 
 if (args is ["--render-sample", var outputPath])
 {
@@ -47,6 +47,61 @@ var root = Path.Combine(Path.GetTempPath(), "graph-notes-check-" + Guid.NewGuid(
 Directory.CreateDirectory(root);
 try
 {
+    var uiSettingsPath = Path.Combine(root, "ui-layout.json");
+    var uiSettingsService = new UiLayoutSettingsService(uiSettingsPath);
+    if (uiSettingsService.Load() != UiLayoutSettings.Default) throw new Exception("UI 배치 기본값 로드 실패");
+    uiSettingsService.Save(new UiLayoutSettings(.72, true, 420));
+    var savedUiSettings = uiSettingsService.Load();
+    if (Math.Abs(savedUiSettings.PreviewRatio - .72) > .001
+        || !savedUiSettings.ExplorerCollapsed
+        || Math.Abs(savedUiSettings.InspectorWidth - 420) > .001)
+        throw new Exception("미리보기 비율과 탐색기 접힘 상태 저장 실패");
+
+    var chunkNote = new NoteInfo(
+        "데이터베이스 성능",
+        Path.Combine(root, "chunk.md"),
+        "## 커넥션 풀\n\nDB 연결을 재사용한다.\n\n## 인덱스\n\n검색 속도를 높인다.",
+        DateTime.Now,
+        NoteMetadata.Manual);
+    var semanticChunks = SemanticTextChunker.Split(chunkNote);
+    if (semanticChunks.Count == 0
+        || semanticChunks.Select(chunk => chunk.Key).Distinct().Count() != semanticChunks.Count
+        || semanticChunks.Any(chunk => string.IsNullOrWhiteSpace(chunk.ContentHash)))
+        throw new Exception("제목 수준 로컬 AI 청크 생성 실패");
+
+    var modelAssets = Path.Combine(Environment.CurrentDirectory, "Assets", "SemanticModel");
+    using (var embeddingModel = new LocalEmbeddingModel(modelAssets, Path.Combine(root, "models")))
+    {
+        var pool = embeddingModel.Embed("데이터베이스 연결을 미리 만들어 재사용하는 커넥션 풀");
+        var similarPool = embeddingModel.Embed("DB 접속 연결을 여러 개 준비해 반복해서 사용하는 방식");
+        var unrelated = embeddingModel.Embed("수채화 물감으로 풍경화를 그리는 방법");
+        static double Dot(float[] left, float[] right) => left.Zip(right, (a, b) => a * b).Sum();
+        var similarScore = Dot(pool, similarPool);
+        var unrelatedScore = Dot(pool, unrelated);
+        if (pool.Length != 384 || similarScore <= unrelatedScore)
+            throw new Exception($"오프라인 다국어 임베딩 추론 실패: 유사 {similarScore:F4}, 무관 {unrelatedScore:F4}");
+    }
+
+    using (var semanticModel = new LocalEmbeddingModel(modelAssets, Path.Combine(root, "models")))
+    using (var semanticService = new SemanticLinkService(
+        semanticModel,
+        new SemanticIndexStore(Path.Combine(root, "semantic-index.db"))))
+    {
+        var semanticNotes = new[]
+        {
+            new NoteInfo("커넥션 풀", Path.Combine(root, "pool.md"), "데이터베이스 연결을 미리 여러 개 만들고 반복해서 재사용한다.", DateTime.Now, NoteMetadata.Manual),
+            new NoteInfo("DB 연결 재사용", Path.Combine(root, "reuse.md"), "DB 접속 연결을 준비해 두고 요청마다 빌려 쓰는 방식이다.", DateTime.Now, NoteMetadata.Manual),
+            new NoteInfo("수채화", Path.Combine(root, "paint.md"), "물감과 붓으로 풍경화를 그리는 방법을 기록한다.", DateTime.Now, NoteMetadata.Manual)
+        };
+        var firstIndex = await semanticService.BuildAsync(root, semanticNotes);
+        if (!firstIndex.SuggestionsByPath[semanticNotes[0].Path].Any(item => item.Note.Path == semanticNotes[1].Path)
+            || firstIndex.SuggestionsByPath[semanticNotes[0].Path].Any(item => item.Note.Path == semanticNotes[2].Path))
+            throw new Exception("의미 기반 노트 연결 추천 실패");
+        var secondIndex = await semanticService.BuildAsync(root, semanticNotes);
+        if (secondIndex.EmbeddedChunkCount != 0 || secondIndex.ReusedChunkCount == 0)
+            throw new Exception("변경되지 않은 임베딩 캐시 재사용 실패");
+    }
+
     var store = new NoteRepository(root);
     var linkService = new NoteLinkService();
     var source = store.Create("원본");
@@ -100,10 +155,50 @@ try
     var networkNotes = store.Load();
     var graphLinks = linkService.Build(networkNotes);
     var graphService = new GraphLayoutService();
-    var graphLayout = graphService.Calculate(networkNotes, graphLinks, 1200, 800, source.Title);
-    if (!graphLayout.Points.ContainsKey(source.Title) || Math.Abs(graphLayout.Points[source.Title].X - 600) > 1 || Math.Abs(graphLayout.Points[source.Title].Y - 400) > 1) throw new Exception("그래프 중심 배치 실패");
-    graphService.Calculate(networkNotes, graphLinks, 1200, 800, null);
+    var graphLayout = graphService.Calculate(networkNotes, graphLinks, 720, 1200, source.Title);
+    if (!graphLayout.Points.ContainsKey(source.Title) || Math.Abs(graphLayout.Points[source.Title].X - 360) > 1 || Math.Abs(graphLayout.Points[source.Title].Y - 600) > 1) throw new Exception("세로형 그래프 중심 배치 실패");
+    graphService.Calculate(networkNotes, graphLinks, 720, 1200, null);
     if (graphService.SimulationRuns != 1) throw new Exception("동일 그래프 레이아웃 캐시 재사용 실패");
+    var zoomedViewport = GraphViewportService.CalculateZoomedViewportOffset(
+        new GraphPoint(100, 50),
+        new GraphPoint(200, 150),
+        1.2,
+        new GraphPoint(1440, 960),
+        new GraphPoint(400, 300));
+    if (Math.Abs(zoomedViewport.X - 160) > .001
+        || Math.Abs(zoomedViewport.Y - 90) > .001
+        || Math.Abs((zoomedViewport.X + 200) / 1.2 - 300) > .001
+        || Math.Abs((zoomedViewport.Y + 150) / 1.2 - 200) > .001)
+        throw new Exception("마우스 포인터 기준 그래프 확대 위치 계산 실패");
+    if (GraphViewportService.ChangeZoom(1, false, 10) != GraphViewportService.MinimumZoom
+        || GraphViewportService.ChangeZoom(1, true, 10) != GraphViewportService.MaximumZoom
+        || GraphViewportService.LabelMode(.69, false) != GraphLabelMode.FocusOnly
+        || GraphViewportService.LabelMode(.7, false) != GraphLabelMode.Orbit
+        || GraphViewportService.LabelMode(.3, true) != GraphLabelMode.Orbit
+        || GraphViewportService.LabelMode(1.1, false) != GraphLabelMode.Detail)
+        throw new Exception("그래프 확대 범위와 단계별 라벨 표시 규칙 실패");
+    if (GraphViewportService.RotationDurationSeconds(GraphViewportService.MaximumZoom) != 0
+        || GraphViewportService.RotationDurationSeconds(GraphViewportService.MinimumZoom) >= GraphViewportService.RotationDurationSeconds(1))
+        throw new Exception("그래프 축소 비례 회전 속도 계산 실패");
+    if (GraphViewportService.NodeRadius(1, false, 1) >= 2.5
+        || GraphViewportService.NodeRadius(1, false, 20) > 3
+        || GraphViewportService.NodeRadius(1, true, 20) > 5
+        || GraphViewportService.NodeRadius(GraphViewportService.MinimumZoom, false, 1) >= .8)
+        throw new Exception("그래프 노드 크기 단계 계산 실패");
+    var labelPlacements = new GraphLabelLayoutService().Arrange(
+    [
+        new GraphLabelCandidate("현재", new GraphPoint(100, 100), 6, 11, 100, 0, GraphLabelRole.Focus),
+        new GraphLabelCandidate("연결 A", new GraphPoint(180, 100), 4, 10, 100, 2, GraphLabelRole.Neighbor),
+        new GraphLabelCandidate("연결 B", new GraphPoint(180, 105), 4, 10, 100, 2, GraphLabelRole.Neighbor)
+    ], new GraphPoint(100, 100), 300, 220);
+    if (labelPlacements.Count < 2
+        || labelPlacements.All(placement => placement.Candidate.Role != GraphLabelRole.Focus)
+        || labelPlacements.SelectMany((left, index) => labelPlacements.Skip(index + 1).Select(right =>
+            left.Position.X < right.Position.X + right.Width + 5
+            && left.Position.X + left.Width + 5 > right.Position.X
+            && left.Position.Y < right.Position.Y + right.Height + 5
+            && left.Position.Y + left.Height + 5 > right.Position.Y)).Any(overlap => overlap))
+        throw new Exception("궤도형 그래프 라벨 충돌 회피 실패");
     if (!linkService.ExtractTargets("[[연결됨]] [[연결됨|별칭]]").SetEquals(["연결됨"])) throw new Exception("위키 링크 대상 인덱스 생성 실패");
     var rendered = MarkdownPreviewRenderer.Render("""
 ==강조==와 [[연결됨|위키 링크]] %%숨김%%
@@ -175,7 +270,7 @@ Recall = TP / (TP + FN)
 
     var sectionMarkdown = "## 첫 구역\n\n첫 본문\n\n### 하위 구역\n\n하위 본문\n\n## 둘째 구역\n\n둘째 본문";
     var sectionRender = MarkdownPreviewRenderer.Render(sectionMarkdown, root);
-    if (!sectionRender.Contains("data-level='1']>.md-summary>h1{font-size:19px}") || sectionRender.Contains("data-level='1']>.md-summary>h1{font-size:22px}")) throw new Exception("노트 제목보다 작은 본문 1단계 제목 크기 적용 실패");
+    if (!sectionRender.Contains("data-level='1']>.md-summary>h1{font-size:13.3px}") || sectionRender.Contains("data-level='1']>.md-summary>h1{font-size:19px}")) throw new Exception("노트 제목보다 작은 본문 1단계 제목 크기 적용 실패");
     if (!sectionRender.Contains("document.addEventListener('click'")
         || !sectionRender.Contains("type: 'focus-editor', offset")
         || !sectionRender.Contains("data-source-offset=\"0\"")
@@ -201,7 +296,11 @@ Recall = TP / (TP + FN)
     var rememberedScrollRender = MarkdownPreviewRenderer.Render("# Section\n\nBody", root, null, null, 321.5);
     if (!rememberedScrollRender.Contains("const initialScrollY = 321.5")
         || !rememberedScrollRender.Contains("window.scrollTo(0, initialScrollY)")
-        || !rememberedScrollRender.Contains("type: 'preview-scroll'"))
+        || !rememberedScrollRender.Contains("type: 'preview-scroll'")
+        || !rememberedScrollRender.Contains("document.documentElement.scrollHeight - window.innerHeight")
+        || !rememberedScrollRender.Contains("y: window.scrollY, maxY")
+        || !rememberedScrollRender.Contains("*::-webkit-scrollbar{width:8px;height:8px}")
+        || !rememberedScrollRender.Contains("scrollbar-color:#555 transparent"))
         throw new Exception("미리보기 갱신 시 스크롤 위치 복원 실패");
 
     var mathRender = MarkdownPreviewRenderer.Render("인라인 $\\sum_{i=1}^{n} x_i$\n\n$$\n\\frac{1}{n} \\sum_{i=1}^{n} x_i\n$$", root);
@@ -218,6 +317,6 @@ Recall = TP / (TP + FN)
         || !chatGptMathRender.Contains("\\sum_{i=1}^{n} x_i"))
         throw new Exception("ChatGPT 스타일 LaTeX 구분자 보존 실패");
     if (!UpdateService.TryParseVersion("v0.1.0", out var parsedVersion) || parsedVersion != new Version(0, 1, 0) || UpdateService.TryParseVersion("latest", out _)) throw new Exception("업데이트 버전 분석 실패");
-    Console.WriteLine("Node checks passed.");
+    Console.WriteLine("Asterism checks passed.");
 }
 finally { Directory.Delete(root, true); }

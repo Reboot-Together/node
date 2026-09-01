@@ -1,7 +1,7 @@
 using System.Net;
 using System.Text.RegularExpressions;
 
-namespace NodeApp;
+namespace AsterismApp;
 
 public sealed class ChatGptImportService
 {
@@ -29,7 +29,7 @@ public sealed class ChatGptImportService
         catch { }
 
         using var client = new HttpClient();
-        client.DefaultRequestHeaders.UserAgent.ParseAdd("Mozilla/5.0 NodeNotes/1.0");
+        client.DefaultRequestHeaders.UserAgent.ParseAdd("Mozilla/5.0 AsterismNotes/1.0");
         var text = HtmlToText(await client.GetStringAsync(uri));
         if (!IsUseful(text)) throw new InvalidOperationException("공유 페이지에서 대화 본문을 찾지 못했습니다.");
         return text.Trim();

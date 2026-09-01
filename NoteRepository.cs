@@ -5,7 +5,7 @@ using FileSystem = Microsoft.VisualBasic.FileIO.FileSystem;
 using RecycleOption = Microsoft.VisualBasic.FileIO.RecycleOption;
 using UIOption = Microsoft.VisualBasic.FileIO.UIOption;
 
-namespace NodeApp;
+namespace AsterismApp;
 
 public sealed class NoteRepository
 {

@@ -1,0 +1,8 @@
+multilingual-e5-small
+Source: https://huggingface.co/intfloat/multilingual-e5-small
+License: MIT
+Runtime format: ONNX, dynamically quantized to signed 8-bit weights for CPU inference
+Quantized ONNX SHA-256: 739c8f25bbe6d8a6001cd2f048701da9879140cc67d4e9327716111e869dd717
+Part 1 SHA-256: 8bfbb2fd3c3d24a3ad810b95270883f193cc0aca1ad13ce5883b99e8159de16a
+Part 2 SHA-256: 47a1dffc02e2593248e52d5d2754ddfa0f691abbe2aa3f8bd3b53c87aaec632a
+Tokenizer SHA-256: cfc8146abe2a0488e9e2a0c56de7952f7c11ab059eca145a0a727afce0db2865

@@ -3,121 +3,164 @@ using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Input;
 using Microsoft.UI.Xaml.Media;
+using Microsoft.UI.Xaml.Media.Animation;
 using Microsoft.UI.Xaml.Shapes;
 
-namespace NodeApp;
+namespace AsterismApp;
 
 public sealed partial class MainWindow
 {
+    private const double GraphLogicalWidth = 720;
+    private const double GraphLogicalHeight = 1200;
     private readonly GraphLayoutService _graphLayoutService = new();
+    private readonly GraphLabelLayoutService _graphLabelLayoutService = new();
     private double _graphZoom = 1;
     private Dictionary<string, GraphPoint> _graphPoints = new(StringComparer.OrdinalIgnoreCase);
+    private GraphLayout? _activeGraphLayout;
+    private readonly List<UIElement> _graphLabelElements = [];
+    private string? _hoveredGraphTitle;
     private bool _graphPanning;
     private uint _graphPointerId;
     private Windows.Foundation.Point _graphDragStart;
     private double _graphHorizontalStart;
     private double _graphVerticalStart;
+    private int _graphViewportRevision;
+    private readonly RotateTransform _graphHoverRotation = new();
+    private Storyboard? _graphHoverStoryboard;
+    private bool _graphPointerInside;
+    private Storyboard? _graphTwinkleStoryboard;
 
     private void GraphZoomIn_Click(object sender, RoutedEventArgs e)
     {
-        _graphZoom = Math.Min(1.8, _graphZoom + .2);
+        _graphZoom = GraphViewportService.ChangeZoom(_graphZoom, zoomIn: true, 1.25);
         DrawGraph();
+        UpdateGraphRotation();
     }
 
     private void GraphZoomOut_Click(object sender, RoutedEventArgs e)
     {
-        _graphZoom = Math.Max(.65, _graphZoom - .2);
+        _graphZoom = GraphViewportService.ChangeZoom(_graphZoom, zoomIn: false, 1.25);
         DrawGraph();
+        UpdateGraphRotation();
     }
 
     private void GraphCanvas_PointerWheelChanged(object sender, PointerRoutedEventArgs e)
     {
-        var delta = e.GetCurrentPoint(GraphCanvas).Properties.MouseWheelDelta;
+        var delta = e.GetCurrentPoint(GraphScroll).Properties.MouseWheelDelta;
         if (delta == 0) return;
 
-        _graphZoom = Math.Clamp(_graphZoom + (delta > 0 ? .1 : -.1), .65, 1.8);
+        var previousZoom = _graphZoom;
+        var nextZoom = GraphViewportService.ChangeZoom(previousZoom, delta > 0, 1.12);
         e.Handled = true;
-        DrawGraph();
+        if (Math.Abs(nextZoom - previousZoom) < .001) return;
+
+        var pointer = e.GetCurrentPoint(GraphScroll).Position;
+        var targetOffset = GraphViewportService.CalculateZoomedViewportOffset(
+            new GraphPoint(GraphScroll.HorizontalOffset, GraphScroll.VerticalOffset),
+            new GraphPoint(pointer.X, pointer.Y),
+            nextZoom / previousZoom,
+            new GraphPoint(GraphLogicalWidth * nextZoom, GraphLogicalHeight * nextZoom),
+            new GraphPoint(GraphScroll.ViewportWidth, GraphScroll.ViewportHeight));
+        var viewportRevision = ++_graphViewportRevision;
+
+        _graphZoom = nextZoom;
+        DrawGraph(centerCurrentNode: false);
+        UpdateGraphRotation();
+        DispatcherQueue.TryEnqueue(() =>
+        {
+            if (viewportRevision != _graphViewportRevision) return;
+            GraphScroll.ChangeView(targetOffset.X, targetOffset.Y, null, true);
+        });
     }
 
-    private void DrawGraph()
+    private void DrawGraph(bool centerCurrentNode = true)
     {
         if (GraphCanvas is null) return;
 
+        var viewportRevision = centerCurrentNode ? ++_graphViewportRevision : _graphViewportRevision;
+
         GraphZoomText.Text = $"{_graphZoom:P0}";
-        GraphCanvas.Width = 1200 * _graphZoom;
-        GraphCanvas.Height = 800 * _graphZoom;
+        GraphCanvas.Width = GraphLogicalWidth * _graphZoom;
+        GraphCanvas.Height = GraphLogicalHeight * _graphZoom;
+        GraphCanvas.RenderTransform = _graphHoverRotation;
+        StopGraphTwinkles();
+        _graphTwinkleStoryboard = new Storyboard();
         GraphCanvas.Children.Clear();
+        _graphLabelElements.Clear();
+        AddConstellationField(GraphCanvas.Width, GraphCanvas.Height);
 
         var notes = _notes
             .GroupBy(note => note.Title, StringComparer.OrdinalIgnoreCase)
             .Select(group => group.First())
             .ToList();
-        if (notes.Count == 0) return;
+        if (notes.Count == 0)
+        {
+            BeginGraphTwinkles();
+            return;
+        }
 
         var selectedTitle = _selected?.Title;
+        var graphLinks = MergeGraphLinks(_noteLinks, _semanticLinks, notes.Select(note => note.Title));
         var layout = _graphLayoutService.Calculate(
             notes,
-            _noteLinks,
-            GraphCanvas.Width,
-            GraphCanvas.Height,
+            graphLinks,
+            GraphLogicalWidth,
+            GraphLogicalHeight,
             selectedTitle);
-        _graphPoints = new Dictionary<string, GraphPoint>(layout.Points, StringComparer.OrdinalIgnoreCase);
+        _activeGraphLayout = layout;
+        _graphPoints = layout.Points.ToDictionary(
+            pair => pair.Key,
+            pair => ScaleGraphPoint(pair.Value),
+            StringComparer.OrdinalIgnoreCase);
+        var visualScale = GraphViewportService.VisualScale(_graphZoom);
 
         foreach (var (source, targets) in layout.Links)
         {
             foreach (var target in targets)
             {
-                var from = layout.Points[source];
-                var to = layout.Points[target];
+                var from = ScaleGraphPoint(layout.Points[source]);
+                var to = ScaleGraphPoint(layout.Points[target]);
+                var explicitLink = HasGraphEdge(_noteLinks, source, target);
                 var highlighted = source.Equals(selectedTitle, StringComparison.OrdinalIgnoreCase)
                     || target.Equals(selectedTitle, StringComparison.OrdinalIgnoreCase);
-                GraphCanvas.Children.Add(new Line
+                var line = new Line
                 {
                     X1 = from.X,
                     Y1 = from.Y,
                     X2 = to.X,
                     Y2 = to.Y,
-                    Stroke = new SolidColorBrush(highlighted
-                        ? ColorHelper.FromArgb(210, 16, 163, 127)
-                        : ColorHelper.FromArgb(105, 92, 92, 92)),
-                    StrokeThickness = highlighted ? 1.8 : 1
-                });
+                    Stroke = new SolidColorBrush(explicitLink
+                        ? highlighted
+                            ? ColorHelper.FromArgb(240, 238, 211, 143)
+                            : ColorHelper.FromArgb(145, 190, 190, 190)
+                        : highlighted
+                            ? ColorHelper.FromArgb(110, 165, 165, 165)
+                            : ColorHelper.FromArgb(50, 125, 125, 125)),
+                    StrokeThickness = (highlighted ? 1.6 : .9) * visualScale
+                };
+                GraphCanvas.Children.Add(line);
             }
         }
 
         foreach (var note in notes)
         {
-            var point = layout.Points[note.Title];
+            var point = _graphPoints[note.Title];
             var selected = note.Title.Equals(selectedTitle, StringComparison.OrdinalIgnoreCase);
-            var connected = layout.SelectedNeighbors.Contains(note.Title);
-            var radius = (selected ? 12 : 7) + Math.Min(5, layout.Degrees[note.Title] * .8);
+            var radius = GraphViewportService.NodeRadius(_graphZoom, selected, layout.Degrees[note.Title]);
 
-            if (selected)
-                AddCircle(point, radius + 6, ColorHelper.FromArgb(45, 16, 163, 127), note, false);
-            AddCircle(point, radius, NodeColor(note), note, true);
-
-            var label = new TextBlock
-            {
-                Text = note.Title,
-                Foreground = new SolidColorBrush(selected || connected
-                    ? ColorHelper.FromArgb(255, 35, 35, 35)
-                    : ColorHelper.FromArgb(195, 105, 105, 105)),
-                FontSize = selected ? 11 : 10,
-                FontWeight = selected
-                    ? Microsoft.UI.Text.FontWeights.SemiBold
-                    : Microsoft.UI.Text.FontWeights.Normal,
-                IsHitTestVisible = false,
-                MaxWidth = 115,
-                TextTrimming = TextTrimming.CharacterEllipsis
-            };
-            Canvas.SetLeft(label, point.X + radius + 5);
-            Canvas.SetTop(label, point.Y - 7);
-            Canvas.SetZIndex(label, 3);
-            GraphCanvas.Children.Add(label);
+            AddStar(point, radius, StarColor(note), note, selected);
         }
 
-        DispatcherQueue.TryEnqueue(CenterCurrentGraphNode);
+        if (_hoveredGraphTitle is not null && !_graphPoints.ContainsKey(_hoveredGraphTitle))
+            _hoveredGraphTitle = null;
+        RefreshGraphLabels();
+        BeginGraphTwinkles();
+
+        if (centerCurrentNode)
+            DispatcherQueue.TryEnqueue(() =>
+            {
+                if (viewportRevision == _graphViewportRevision) CenterCurrentGraphNode();
+            });
     }
 
     private void CenterCurrentGraphNode()
@@ -129,14 +172,23 @@ public sealed partial class MainWindow
         GraphScroll.ChangeView(horizontal, vertical, null, true);
     }
 
-    private void GraphScroll_SizeChanged(object sender, SizeChangedEventArgs e) =>
-        DispatcherQueue.TryEnqueue(CenterCurrentGraphNode);
+    private GraphPoint ScaleGraphPoint(GraphPoint point) => new(point.X * _graphZoom, point.Y * _graphZoom);
+
+    private void GraphScroll_SizeChanged(object sender, SizeChangedEventArgs e)
+    {
+        var viewportRevision = ++_graphViewportRevision;
+        DispatcherQueue.TryEnqueue(() =>
+        {
+            if (viewportRevision == _graphViewportRevision) CenterCurrentGraphNode();
+        });
+    }
 
     private void GraphCanvas_DoubleTapped(object sender, DoubleTappedRoutedEventArgs e)
     {
         if (!ReferenceEquals(e.OriginalSource, GraphCanvas)) return;
 
         _graphPanning = false;
+        _graphViewportRevision++;
         if (_selected is not null && _graphPoints.ContainsKey(_selected.Title))
         {
             CenterCurrentGraphNode();
@@ -153,6 +205,7 @@ public sealed partial class MainWindow
 
     private void GraphCanvas_PointerPressed(object sender, PointerRoutedEventArgs e)
     {
+        _graphViewportRevision++;
         _graphPanning = true;
         _graphPointerId = e.Pointer.PointerId;
         _graphDragStart = e.GetCurrentPoint(GraphScroll).Position;
@@ -182,32 +235,445 @@ public sealed partial class MainWindow
         GraphCanvas.ReleasePointerCapture(e.Pointer);
     }
 
-    private void AddCircle(GraphPoint point, double radius, Windows.UI.Color color, NoteInfo note, bool clickable)
+    private void GraphScroll_PointerEntered(object sender, PointerRoutedEventArgs e)
     {
-        var circle = new Ellipse
+        _graphPointerInside = true;
+        UpdateGraphRotation();
+    }
+
+    private void GraphScroll_PointerExited(object sender, PointerRoutedEventArgs e)
+    {
+        _graphPointerInside = false;
+        AnimateGraphUpright();
+    }
+
+    private void UpdateGraphRotation()
+    {
+        if (!_graphPointerInside) return;
+
+        var durationSeconds = GraphViewportService.RotationDurationSeconds(_graphZoom);
+        if (durationSeconds <= 0)
+        {
+            AnimateGraphUpright();
+            return;
+        }
+
+        var currentAngle = FreezeGraphRotation();
+        var animation = new DoubleAnimation
+        {
+            From = currentAngle,
+            To = currentAngle + 360,
+            Duration = new Duration(TimeSpan.FromSeconds(durationSeconds)),
+            RepeatBehavior = RepeatBehavior.Forever,
+            EnableDependentAnimation = true
+        };
+        Storyboard.SetTarget(animation, _graphHoverRotation);
+        Storyboard.SetTargetProperty(animation, nameof(RotateTransform.Angle));
+        _graphHoverStoryboard = new Storyboard();
+        _graphHoverStoryboard.Children.Add(animation);
+        _graphHoverStoryboard.Begin();
+    }
+
+    private void AnimateGraphUpright()
+    {
+        var currentAngle = FreezeGraphRotation();
+        var targetAngle = Math.Round(currentAngle / 360) * 360;
+        if (Math.Abs(targetAngle - currentAngle) < .01)
+        {
+            _graphHoverRotation.Angle = targetAngle;
+            return;
+        }
+
+        _graphHoverStoryboard?.Stop();
+        var animation = new DoubleAnimation
+        {
+            From = currentAngle,
+            To = targetAngle,
+            Duration = new Duration(TimeSpan.FromMilliseconds(850)),
+            EnableDependentAnimation = true,
+            EasingFunction = new CubicEase { EasingMode = EasingMode.EaseInOut }
+        };
+        Storyboard.SetTarget(animation, _graphHoverRotation);
+        Storyboard.SetTargetProperty(animation, nameof(RotateTransform.Angle));
+        _graphHoverStoryboard = new Storyboard();
+        _graphHoverStoryboard.Children.Add(animation);
+        _graphHoverStoryboard.Begin();
+    }
+
+    private double FreezeGraphRotation()
+    {
+        var currentAngle = _graphHoverRotation.Angle;
+        _graphHoverStoryboard?.Stop();
+        _graphHoverStoryboard = null;
+        _graphHoverRotation.Angle = currentAngle;
+        return currentAngle;
+    }
+
+    private void AddConstellationField(double width, double height)
+    {
+        var centerX = width / 2;
+        var centerY = height / 2;
+        var outerRadius = Math.Max(80, Math.Min(width, height) / 2 - 42);
+        var gridBrush = new SolidColorBrush(ColorHelper.FromArgb(28, 145, 145, 145));
+        foreach (var scale in new[] { 1d, .78, .56, .34 })
+        {
+            var ring = new Ellipse
+            {
+                Width = outerRadius * 2 * scale,
+                Height = outerRadius * 2 * scale,
+                Stroke = gridBrush,
+                StrokeThickness = scale == 1 ? 1.1 : .7,
+                IsHitTestVisible = false
+            };
+            Canvas.SetLeft(ring, centerX - ring.Width / 2);
+            Canvas.SetTop(ring, centerY - ring.Height / 2);
+            GraphCanvas.Children.Add(ring);
+        }
+
+        for (var index = 0; index < 16; index++)
+        {
+            var angle = Math.PI * 2 * index / 16;
+            var spoke = new Line
+            {
+                X1 = centerX,
+                Y1 = centerY,
+                X2 = centerX + Math.Cos(angle) * outerRadius,
+                Y2 = centerY + Math.Sin(angle) * outerRadius,
+                Stroke = new SolidColorBrush(ColorHelper.FromArgb(17, 145, 145, 145)),
+                StrokeThickness = .65,
+                IsHitTestVisible = false
+            };
+            GraphCanvas.Children.Add(spoke);
+        }
+
+        if (_graphZoom >= .4)
+        {
+            foreach (var (text, x, y) in new[]
+            {
+                ("N", centerX, centerY - outerRadius + 13),
+                ("E", centerX + outerRadius - 13, centerY),
+                ("S", centerX, centerY + outerRadius - 17),
+                ("W", centerX - outerRadius + 9, centerY)
+            })
+            {
+                var marker = new TextBlock
+                {
+                    Text = text,
+                    FontFamily = new FontFamily("Cascadia Mono"),
+                    FontSize = 8,
+                    Foreground = new SolidColorBrush(ColorHelper.FromArgb(155, 155, 155, 155)),
+                    IsHitTestVisible = false
+                };
+                Canvas.SetLeft(marker, x - 3);
+                Canvas.SetTop(marker, y - 6);
+                GraphCanvas.Children.Add(marker);
+            }
+        }
+
+        var fieldStarCount = Math.Clamp((int)(40 + 50 * _graphZoom), 45, 150);
+        for (var index = 0; index < fieldStarCount; index++)
+        {
+            var radius = index % 17 == 0 ? 1.25 : index % 7 == 0 ? .8 : .45;
+            var star = new Ellipse
+            {
+                Width = radius * 2,
+                Height = radius * 2,
+                Fill = new SolidColorBrush(ColorHelper.FromArgb(index % 17 == 0 ? (byte)150 : (byte)72, 220, 220, 220)),
+                IsHitTestVisible = false
+            };
+            Canvas.SetLeft(star, 24 + (index * 223 % Math.Max(1, (int)width - 48)));
+            Canvas.SetTop(star, 20 + (index * 137 % Math.Max(1, (int)height - 40)));
+            GraphCanvas.Children.Add(star);
+            StartGraphTwinkle(star, $"field:{index}", index % 17 == 0 ? .58 : .38);
+        }
+    }
+
+    private void AddStar(
+        GraphPoint point,
+        double radius,
+        Windows.UI.Color color,
+        NoteInfo note,
+        bool selected)
+    {
+        if (selected)
+        {
+            var haloPadding = Math.Max(1, 2.5 * GraphViewportService.VisualScale(_graphZoom));
+            var halo = new Ellipse
+            {
+                Width = (radius + haloPadding) * 2,
+                Height = (radius + haloPadding) * 2,
+                Fill = new SolidColorBrush(ColorHelper.FromArgb(58, 238, 211, 143)),
+                IsHitTestVisible = false
+            };
+            Canvas.SetLeft(halo, point.X - radius - haloPadding);
+            Canvas.SetTop(halo, point.Y - radius - haloPadding);
+            Canvas.SetZIndex(halo, 1);
+            GraphCanvas.Children.Add(halo);
+        }
+
+        var core = new Ellipse
         {
             Width = radius * 2,
             Height = radius * 2,
-            Fill = new SolidColorBrush(color),
-            Stroke = new SolidColorBrush(ColorHelper.FromArgb(180, 255, 255, 255)),
-            StrokeThickness = clickable ? 1 : 0,
-            Opacity = clickable ? 1 : .8
+            Fill = new SolidColorBrush(selected ? ColorHelper.FromArgb(255, 238, 211, 143) : color),
+            Stroke = new SolidColorBrush(ColorHelper.FromArgb(225, 255, 255, 255)),
+            StrokeThickness = selected ? .85 : .55,
+            IsHitTestVisible = false
         };
-        Canvas.SetLeft(circle, point.X - radius);
-        Canvas.SetTop(circle, point.Y - radius);
-        Canvas.SetZIndex(circle, clickable ? 2 : 1);
-        if (clickable)
+        Canvas.SetLeft(core, point.X - radius);
+        Canvas.SetTop(core, point.Y - radius);
+        Canvas.SetZIndex(core, 3);
+        GraphCanvas.Children.Add(core);
+        StartGraphTwinkle(core, $"note:{note.Title}", selected ? .84 : .64);
+
+        var hitRadius = Math.Max(8, radius);
+        var hitTarget = new Ellipse
         {
-            ToolTipService.SetToolTip(circle, note.Title);
-            circle.Tapped += (_, _) => Select(note);
-        }
-        GraphCanvas.Children.Add(circle);
+            Width = hitRadius * 2,
+            Height = hitRadius * 2,
+            Fill = new SolidColorBrush(Colors.Transparent)
+        };
+        Canvas.SetLeft(hitTarget, point.X - hitRadius);
+        Canvas.SetTop(hitTarget, point.Y - hitRadius);
+        Canvas.SetZIndex(hitTarget, 5);
+        ToolTipService.SetToolTip(hitTarget, note.Title);
+        hitTarget.Tapped += (_, _) => Select(note);
+        hitTarget.PointerEntered += (_, _) => SetHoveredGraphNode(note.Title);
+        hitTarget.PointerExited += (_, _) => ClearHoveredGraphNode(note.Title);
+        GraphCanvas.Children.Add(hitTarget);
     }
 
-    private static Windows.UI.Color NodeColor(NoteInfo note) =>
+    private void StartGraphTwinkle(FrameworkElement star, string key, double minimumOpacity)
+    {
+        var seed = unchecked((uint)StringComparer.Ordinal.GetHashCode(key));
+        var durationSeconds = 2.8 + seed % 41 / 10d;
+        var delaySeconds = (seed >> 8) % 16 / 10d;
+        star.Opacity = minimumOpacity;
+
+        var animation = new DoubleAnimation
+        {
+            From = minimumOpacity,
+            To = 1,
+            Duration = new Duration(TimeSpan.FromSeconds(durationSeconds)),
+            BeginTime = TimeSpan.FromSeconds(delaySeconds),
+            AutoReverse = true,
+            RepeatBehavior = RepeatBehavior.Forever,
+            EasingFunction = new SineEase { EasingMode = EasingMode.EaseInOut }
+        };
+        Storyboard.SetTarget(animation, star);
+        Storyboard.SetTargetProperty(animation, nameof(UIElement.Opacity));
+        _graphTwinkleStoryboard?.Children.Add(animation);
+    }
+
+    private void BeginGraphTwinkles()
+    {
+        if (_graphTwinkleStoryboard?.Children.Count > 0)
+            _graphTwinkleStoryboard.Begin();
+    }
+
+    private void StopGraphTwinkles()
+    {
+        _graphTwinkleStoryboard?.Stop();
+        _graphTwinkleStoryboard = null;
+    }
+
+    private void SetHoveredGraphNode(string title)
+    {
+        if (_graphPanning || title.Equals(_hoveredGraphTitle, StringComparison.OrdinalIgnoreCase)) return;
+        _hoveredGraphTitle = title;
+        RefreshGraphLabels();
+    }
+
+    private void ClearHoveredGraphNode(string title)
+    {
+        if (!title.Equals(_hoveredGraphTitle, StringComparison.OrdinalIgnoreCase)) return;
+        _hoveredGraphTitle = null;
+        RefreshGraphLabels();
+    }
+
+    private void RefreshGraphLabels()
+    {
+        foreach (var element in _graphLabelElements) GraphCanvas.Children.Remove(element);
+        _graphLabelElements.Clear();
+        if (_activeGraphLayout is null || _graphPoints.Count == 0) return;
+
+        var selectedTitle = _selected?.Title;
+        var focusTitle = _hoveredGraphTitle is not null && _graphPoints.ContainsKey(_hoveredGraphTitle)
+            ? _hoveredGraphTitle
+            : selectedTitle;
+        if (focusTitle is null || !_graphPoints.TryGetValue(focusTitle, out var focusPoint)) return;
+
+        var hovering = _hoveredGraphTitle is not null;
+        var mode = GraphViewportService.LabelMode(_graphZoom, hovering);
+        var neighbors = GraphNeighborsOf(focusTitle, _activeGraphLayout.Links);
+        var labelScale = Math.Clamp(Math.Sqrt(_graphZoom), .82, 1.1);
+        var candidates = new List<GraphLabelCandidate>();
+        var included = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+        if (!focusTitle.Equals(selectedTitle, StringComparison.OrdinalIgnoreCase))
+            AddCandidate(focusTitle, GraphLabelRole.Focus, 0);
+
+        var orderedNeighbors = neighbors
+            .Where(_graphPoints.ContainsKey)
+            .OrderByDescending(title => _activeGraphLayout.Degrees.GetValueOrDefault(title))
+            .ThenBy(title => title, StringComparer.OrdinalIgnoreCase)
+            .ToList();
+        if (mode is GraphLabelMode.Orbit or GraphLabelMode.Detail)
+        {
+            foreach (var title in orderedNeighbors.Take(8)) AddCandidate(title, GraphLabelRole.Neighbor, 2);
+            if (mode == GraphLabelMode.Orbit && orderedNeighbors.Count > 8)
+            {
+                candidates.Add(new GraphLabelCandidate(
+                    $"+{orderedNeighbors.Count - 8}",
+                    new GraphPoint(focusPoint.X, focusPoint.Y + 26 * GraphViewportService.VisualScale(_graphZoom)),
+                    0,
+                    6 * labelScale,
+                    40,
+                    3,
+                    GraphLabelRole.Summary));
+            }
+        }
+        if (mode == GraphLabelMode.Detail)
+        {
+            foreach (var title in _graphPoints.Keys
+                .Where(title => !included.Contains(title)
+                    && !title.Equals(selectedTitle, StringComparison.OrdinalIgnoreCase))
+                .OrderByDescending(title => _activeGraphLayout.Degrees.GetValueOrDefault(title))
+                .ThenBy(title => title, StringComparer.OrdinalIgnoreCase))
+                AddCandidate(title, GraphLabelRole.Global, 4);
+        }
+
+        var placements = _graphLabelLayoutService.Arrange(candidates, focusPoint, GraphCanvas.Width, GraphCanvas.Height);
+        AddFocusOrbit(focusPoint, orderedNeighbors, mode, hovering);
+        foreach (var placement in placements) AddGraphLabel(placement);
+
+        void AddCandidate(string title, GraphLabelRole role, int priority)
+        {
+            if (!included.Add(title) || !_graphPoints.TryGetValue(title, out var point)) return;
+            var selected = title.Equals(selectedTitle, StringComparison.OrdinalIgnoreCase);
+            var degree = _activeGraphLayout.Degrees.GetValueOrDefault(title);
+            candidates.Add(new GraphLabelCandidate(
+                title,
+                point,
+                GraphViewportService.NodeRadius(_graphZoom, selected, degree),
+                (role is GraphLabelRole.Focus or GraphLabelRole.Selected ? 7 : 6.5) * labelScale,
+                100 * labelScale,
+                priority,
+                role));
+        }
+    }
+
+    private void AddFocusOrbit(GraphPoint focus, IReadOnlyList<string> neighbors, GraphLabelMode mode, bool hovering)
+    {
+        if (neighbors.Count < 2 || mode == GraphLabelMode.FocusOnly || mode == GraphLabelMode.Detail && !hovering) return;
+        var distances = neighbors
+            .Where(_graphPoints.ContainsKey)
+            .Select(title =>
+            {
+                var point = _graphPoints[title];
+                var dx = point.X - focus.X;
+                var dy = point.Y - focus.Y;
+                return Math.Sqrt(dx * dx + dy * dy);
+            })
+            .Order()
+            .ToList();
+        if (distances.Count < 2) return;
+
+        var radius = Math.Clamp(distances[distances.Count / 2], 30, Math.Min(GraphCanvas.Width, GraphCanvas.Height) * .42);
+        var orbit = new Ellipse
+        {
+            Width = radius * 2,
+            Height = radius * 2,
+            Stroke = new SolidColorBrush(ColorHelper.FromArgb(25, 209, 175, 97)),
+            StrokeThickness = .7,
+            IsHitTestVisible = false
+        };
+        Canvas.SetLeft(orbit, focus.X - radius);
+        Canvas.SetTop(orbit, focus.Y - radius);
+        Canvas.SetZIndex(orbit, 2);
+        GraphCanvas.Children.Add(orbit);
+        _graphLabelElements.Add(orbit);
+    }
+
+    private void AddGraphLabel(GraphLabelPlacement placement)
+    {
+        var role = placement.Candidate.Role;
+        var text = new TextBlock
+        {
+            Text = placement.Candidate.Title,
+            Foreground = new SolidColorBrush(role switch
+            {
+                GraphLabelRole.Focus => ColorHelper.FromArgb(255, 240, 211, 143),
+                GraphLabelRole.Selected => ColorHelper.FromArgb(255, 238, 242, 247),
+                GraphLabelRole.Neighbor => ColorHelper.FromArgb(238, 218, 218, 218),
+                GraphLabelRole.Summary => ColorHelper.FromArgb(225, 175, 175, 175),
+                _ => ColorHelper.FromArgb(205, 155, 155, 155)
+            }),
+            FontSize = placement.Candidate.FontSize,
+            FontWeight = role is GraphLabelRole.Focus or GraphLabelRole.Selected
+                ? Microsoft.UI.Text.FontWeights.SemiBold
+                : Microsoft.UI.Text.FontWeights.Normal,
+            IsHitTestVisible = false,
+            MaxWidth = placement.Candidate.MaximumWidth,
+            TextTrimming = TextTrimming.CharacterEllipsis
+        };
+        FrameworkElement element = text;
+        if (role is GraphLabelRole.Focus or GraphLabelRole.Selected)
+        {
+            element = new Border
+            {
+                Background = new SolidColorBrush(ColorHelper.FromArgb(205, 24, 24, 24)),
+                CornerRadius = new CornerRadius(3),
+                Padding = new Thickness(2, 0, 2, 1),
+                Child = text,
+                IsHitTestVisible = false
+            };
+        }
+        Canvas.SetLeft(element, placement.Position.X);
+        Canvas.SetTop(element, placement.Position.Y);
+        Canvas.SetZIndex(element, 6);
+        GraphCanvas.Children.Add(element);
+        _graphLabelElements.Add(element);
+    }
+
+    private static HashSet<string> GraphNeighborsOf(string title, IReadOnlyDictionary<string, List<string>> links)
+    {
+        var neighbors = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var (source, targets) in links)
+        {
+            if (source.Equals(title, StringComparison.OrdinalIgnoreCase)) neighbors.UnionWith(targets);
+            else if (targets.Contains(title, StringComparer.OrdinalIgnoreCase)) neighbors.Add(source);
+        }
+        neighbors.Remove(title);
+        return neighbors;
+    }
+
+    private static Windows.UI.Color StarColor(NoteInfo note) =>
         note.Metadata.Source.Equals("ChatGPT", StringComparison.OrdinalIgnoreCase)
-            ? ColorHelper.FromArgb(255, 16, 163, 127)
+            ? ColorHelper.FromArgb(255, 205, 205, 205)
             : note.Metadata.Type.Equals("Daily", StringComparison.OrdinalIgnoreCase)
-                ? ColorHelper.FromArgb(255, 94, 149, 255)
-                : ColorHelper.FromArgb(255, 151, 151, 151);
+                ? ColorHelper.FromArgb(255, 235, 235, 235)
+                : ColorHelper.FromArgb(255, 220, 220, 220);
+
+    private static IReadOnlyDictionary<string, List<string>> MergeGraphLinks(
+        IReadOnlyDictionary<string, List<string>> explicitLinks,
+        IReadOnlyDictionary<string, List<string>> semanticLinks,
+        IEnumerable<string> noteTitles)
+    {
+        var titles = noteTitles.ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var merged = titles.ToDictionary(title => title, _ => new HashSet<string>(StringComparer.OrdinalIgnoreCase), StringComparer.OrdinalIgnoreCase);
+        foreach (var links in new[] { explicitLinks, semanticLinks })
+            foreach (var (source, targets) in links)
+                if (merged.TryGetValue(source, out var sourceLinks))
+                    foreach (var target in targets)
+                        if (titles.Contains(target) && !source.Equals(target, StringComparison.OrdinalIgnoreCase))
+                        {
+                            if (!merged[target].Contains(source)) sourceLinks.Add(target);
+                        }
+        return merged.ToDictionary(pair => pair.Key, pair => pair.Value.ToList(), StringComparer.OrdinalIgnoreCase);
+    }
+
+    private static bool HasGraphEdge(IReadOnlyDictionary<string, List<string>> links, string source, string target) =>
+        links.TryGetValue(source, out var sourceTargets) && sourceTargets.Contains(target, StringComparer.OrdinalIgnoreCase)
+        || links.TryGetValue(target, out var targetSources) && targetSources.Contains(source, StringComparer.OrdinalIgnoreCase);
 }

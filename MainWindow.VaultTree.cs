@@ -3,7 +3,7 @@ using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Input;
 using Windows.ApplicationModel.DataTransfer;
 
-namespace NodeApp;
+namespace AsterismApp;
 
 public sealed partial class MainWindow
 {

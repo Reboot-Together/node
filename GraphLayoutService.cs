@@ -1,4 +1,4 @@
-namespace NodeApp;
+namespace AsterismApp;
 
 public readonly record struct GraphPoint(double X, double Y)
 {

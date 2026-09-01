@@ -1,17 +1,12 @@
 using System.Text.Json;
 
-namespace NodeApp;
+namespace AsterismApp;
 
 public sealed class WorkspaceService
 {
-    private static readonly string SettingsPath = Path.Combine(
-        Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-        "Node",
-        "settings.json");
-
     public WorkspaceService()
     {
-        RootPath = LoadSavedRoot() ?? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments), "Node");
+        RootPath = LoadSavedRoot() ?? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments), "Asterism");
         Directory.CreateDirectory(RootPath);
     }
 
@@ -21,17 +16,21 @@ public sealed class WorkspaceService
     {
         RootPath = Path.GetFullPath(rootPath);
         Directory.CreateDirectory(RootPath);
-        Directory.CreateDirectory(Path.GetDirectoryName(SettingsPath)!);
-        File.WriteAllText(SettingsPath, JsonSerializer.Serialize(new WorkspaceSettings(RootPath)));
+        Directory.CreateDirectory(Path.GetDirectoryName(ApplicationDataPaths.SettingsFile)!);
+        File.WriteAllText(ApplicationDataPaths.SettingsFile, JsonSerializer.Serialize(new WorkspaceSettings(RootPath)));
     }
 
     private static string? LoadSavedRoot()
     {
         try
         {
-            if (!File.Exists(SettingsPath)) return null;
-            var root = JsonSerializer.Deserialize<WorkspaceSettings>(File.ReadAllText(SettingsPath))?.RootPath;
-            return string.IsNullOrWhiteSpace(root) ? null : root;
+            foreach (var settingsPath in ApplicationDataPaths.SettingsCandidates())
+            {
+                if (!File.Exists(settingsPath)) continue;
+                var root = JsonSerializer.Deserialize<WorkspaceSettings>(File.ReadAllText(settingsPath))?.RootPath;
+                if (!string.IsNullOrWhiteSpace(root)) return root;
+            }
+            return null;
         }
         catch { return null; }
     }

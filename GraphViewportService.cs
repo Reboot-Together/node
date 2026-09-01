@@ -1,0 +1,54 @@
+namespace AsterismApp;
+
+public enum GraphLabelMode
+{
+    FocusOnly,
+    Orbit,
+    Detail
+}
+
+public static class GraphViewportService
+{
+    public const double MinimumZoom = .18;
+    public const double MaximumZoom = 2.4;
+
+    public static double ChangeZoom(double currentZoom, bool zoomIn, double factor) =>
+        Math.Clamp(currentZoom * (zoomIn ? factor : 1 / factor), MinimumZoom, MaximumZoom);
+
+    public static GraphPoint CalculateZoomedViewportOffset(
+        GraphPoint currentOffset,
+        GraphPoint pointerInViewport,
+        double zoomRatio,
+        GraphPoint newContentSize,
+        GraphPoint viewportSize)
+    {
+        var horizontal = (currentOffset.X + pointerInViewport.X) * zoomRatio - pointerInViewport.X;
+        var vertical = (currentOffset.Y + pointerInViewport.Y) * zoomRatio - pointerInViewport.Y;
+        return new GraphPoint(
+            Math.Clamp(horizontal, 0, Math.Max(0, newContentSize.X - viewportSize.X)),
+            Math.Clamp(vertical, 0, Math.Max(0, newContentSize.Y - viewportSize.Y)));
+    }
+
+    public static GraphLabelMode LabelMode(double zoom, bool hovering) =>
+        zoom >= 1.1 ? GraphLabelMode.Detail
+        : hovering || zoom >= .7 ? GraphLabelMode.Orbit
+        : GraphLabelMode.FocusOnly;
+
+    public static double VisualScale(double zoom) => Math.Clamp(zoom, .28, 1.35);
+
+    public static double RotationDurationSeconds(double zoom)
+    {
+        zoom = Math.Clamp(zoom, MinimumZoom, MaximumZoom);
+        if (zoom >= MaximumZoom - .001) return 0;
+
+        var intensity = (MaximumZoom - zoom) / (MaximumZoom - MinimumZoom);
+        return 10 + 50 * Math.Pow(1 - intensity, 2);
+    }
+
+    public static double NodeRadius(double zoom, bool selected, int degree)
+    {
+        var baseRadius = selected ? 3.5 : 1.75;
+        var degreeRadius = Math.Min(selected ? 1.25 : 1, Math.Max(0, degree) * .15);
+        return (baseRadius + degreeRadius) * VisualScale(zoom);
+    }
+}

@@ -4,7 +4,7 @@ using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Input;
 using Windows.Storage.Pickers;
 
-namespace NodeApp;
+namespace AsterismApp;
 
 public sealed partial class MainWindow
 {

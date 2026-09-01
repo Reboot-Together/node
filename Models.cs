@@ -1,4 +1,4 @@
-namespace NodeApp;
+namespace AsterismApp;
 
 public sealed record NoteMetadata(string Category, DateTime Created, string Source, string Type)
 {
@@ -6,6 +6,11 @@ public sealed record NoteMetadata(string Category, DateTime Created, string Sour
 }
 
 public sealed record NoteInfo(string Title, string Path, string Body, DateTime LastWriteTime, NoteMetadata Metadata);
+
+public sealed record SemanticSuggestion(NoteInfo Note, double Score)
+{
+    public string ScoreText => $"{Score:P0}";
+}
 
 public sealed record VaultItem(
     string Name,

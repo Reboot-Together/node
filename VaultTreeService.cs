@@ -1,6 +1,6 @@
 using System.Runtime.InteropServices;
 
-namespace NodeApp;
+namespace AsterismApp;
 
 public sealed class VaultTreeService
 {

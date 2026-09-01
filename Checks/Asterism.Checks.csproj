@@ -1,0 +1,27 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup><OutputType>Exe</OutputType><TargetFramework>net8.0</TargetFramework><ImplicitUsings>enable</ImplicitUsings><Nullable>enable</Nullable></PropertyGroup>
+  <ItemGroup>
+    <Compile Include="..\Models.cs" Link="Models.cs" />
+    <Compile Include="..\ApplicationDataPaths.cs" Link="ApplicationDataPaths.cs" />
+    <Compile Include="..\UiLayoutSettingsService.cs" Link="UiLayoutSettingsService.cs" />
+    <Compile Include="..\MarkdownText.cs" Link="MarkdownText.cs" />
+    <Compile Include="..\MarkdownHeadingLevelService.cs" Link="MarkdownHeadingLevelService.cs" />
+    <Compile Include="..\SemanticTextChunker.cs" Link="SemanticTextChunker.cs" />
+    <Compile Include="..\LocalEmbeddingModel.cs" Link="LocalEmbeddingModel.cs" />
+    <Compile Include="..\SemanticIndexStore.cs" Link="SemanticIndexStore.cs" />
+    <Compile Include="..\SemanticLinkService.cs" Link="SemanticLinkService.cs" />
+    <Compile Include="..\ChatGptImportService.cs" Link="ChatGptImportService.cs" />
+    <Compile Include="..\NoteRepository.cs" Link="NoteRepository.cs" />
+    <Compile Include="..\NoteLinkService.cs" Link="NoteLinkService.cs" />
+    <Compile Include="..\GraphLayoutService.cs" Link="GraphLayoutService.cs" />
+    <Compile Include="..\GraphViewportService.cs" Link="GraphViewportService.cs" />
+    <Compile Include="..\GraphLabelLayoutService.cs" Link="GraphLabelLayoutService.cs" />
+    <Compile Include="..\VaultTreeService.cs" Link="VaultTreeService.cs" />
+    <Compile Include="..\UpdateService.cs" Link="UpdateService.cs" />
+    <Compile Include="..\MarkdownPreviewRenderer.cs" Link="MarkdownPreviewRenderer.cs" />
+    <PackageReference Include="Markdig" Version="1.3.2" />
+    <PackageReference Include="Microsoft.Data.Sqlite" Version="8.0.30" />
+    <PackageReference Include="Microsoft.ML.OnnxRuntime" Version="1.29.0" />
+    <PackageReference Include="Microsoft.ML.Tokenizers" Version="2.0.0" />
+  </ItemGroup>
+</Project>

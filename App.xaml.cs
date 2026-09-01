@@ -1,6 +1,6 @@
 using Microsoft.UI.Xaml;
 
-namespace NodeApp;
+namespace AsterismApp;
 
 public partial class App : Application
 {

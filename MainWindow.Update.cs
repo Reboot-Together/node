@@ -1,7 +1,7 @@
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 
-namespace NodeApp;
+namespace AsterismApp;
 
 public sealed partial class MainWindow
 {
@@ -29,7 +29,7 @@ public sealed partial class MainWindow
             {
                 Header = $"설치된 버전: v{current.ToString(3)}",
                 ItemsSource = releases,
-                DisplayMemberPath = nameof(NodeRelease.DisplayName),
+                DisplayMemberPath = nameof(AsterismRelease.DisplayName),
                 SelectedIndex = 0,
                 HorizontalAlignment = HorizontalAlignment.Stretch
             };
@@ -52,7 +52,7 @@ public sealed partial class MainWindow
 
             var dialog = new ContentDialog
             {
-                Title = "Node 버전 선택",
+                Title = "Asterism 버전 선택",
                 Content = content,
                 PrimaryButtonText = "선택 버전 설치",
                 CloseButtonText = "취소",
@@ -62,7 +62,7 @@ public sealed partial class MainWindow
 
             void RefreshSelection()
             {
-                if (selector.SelectedItem is not NodeRelease selected) return;
+                if (selector.SelectedItem is not AsterismRelease selected) return;
                 var relation = selected.Version > current
                     ? "업데이트"
                     : selected.Version < current
@@ -75,7 +75,7 @@ public sealed partial class MainWindow
             selector.SelectionChanged += (_, _) => RefreshSelection();
             RefreshSelection();
             if (await dialog.ShowAsync() != ContentDialogResult.Primary
-                || selector.SelectedItem is not NodeRelease release)
+                || selector.SelectedItem is not AsterismRelease release)
                 return;
 
             SaveCurrent();

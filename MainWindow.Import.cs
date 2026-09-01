@@ -3,7 +3,7 @@ using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.Web.WebView2.Core;
 
-namespace NodeApp;
+namespace AsterismApp;
 
 public sealed partial class MainWindow
 {

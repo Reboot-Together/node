@@ -6,7 +6,7 @@ using Markdig;
 using Markdig.Renderers.Html;
 using Markdig.Syntax;
 
-namespace NodeApp;
+namespace AsterismApp;
 
 public static class MarkdownPreviewRenderer
 {
@@ -188,30 +188,31 @@ public static class MarkdownPreviewRenderer
         <html>
         <head>
           <meta charset="utf-8">
-          <meta name="color-scheme" content="light">
+          <meta name="color-scheme" content="dark">
           <link rel="stylesheet" href="https://node-assets.local/katex.min.css">
           <script src="https://node-assets.local/katex.min.js"></script>
           <script src="https://node-assets.local/auto-render.min.js"></script>
           <style>
-            *{box-sizing:border-box}html{background:#fff}
-            body{margin:0 auto;max-width:820px;padding:22px 34px 72px;color:#202123;background:#fff;font:14px/1.7 'Segoe UI Variable Text','Segoe UI','Malgun Gothic',sans-serif;word-break:keep-all;overflow-wrap:anywhere}
-            h1,h2,h3,h4,h5,h6{color:#111827;font-weight:700;letter-spacing:-.012em}
-            h1{font-size:19px;line-height:1.32;margin:0 0 20px}h2{font-size:17px;line-height:1.38;margin:30px 0 11px;padding-bottom:7px;border-bottom:1px solid #e5e7eb}h3{font-size:15px;line-height:1.45;margin:24px 0 8px}h4{font-size:13.5px;margin:20px 0 7px}h5{font-size:12.5px;margin:18px 0 6px}h6{font-size:11.5px;margin:16px 0 5px}
-            p{margin:0 0 14px}strong{font-weight:700;color:#111}em{color:#3f3f46}ul,ol{margin:5px 0 18px;padding-left:24px}li{margin:4px 0;padding-left:2px}li>p{margin:0}
-            a{color:#2563a9;text-decoration:none}.internal-link{color:#6558a8;font-weight:600}.internal-link:hover,a:hover{text-decoration:underline}mark{background:#fff0a8;color:#202123;padding:1px 3px;border-radius:2px}
-            blockquote{margin:18px 0;padding:10px 15px;border-left:3px solid #d1d5db;color:#52525b;background:#fafafa;border-radius:0 7px 7px 0}blockquote>:last-child{margin-bottom:0}hr{border:0;border-top:1px solid #d9dce1;margin:28px 0}
-            table{border-collapse:collapse;width:max-content;max-width:100%;margin:18px 0 24px;font-size:13px}thead{border-bottom:1px solid #cfd3d8}th,td{padding:9px 10px;text-align:left;vertical-align:top;border-bottom:1px solid #e5e7eb}th{color:#18181b;font-weight:700;background:#fafafa}tbody tr:hover{background:#fafafa}
-            pre{position:relative;overflow:auto;margin:18px 0 22px;padding:17px 18px;background:#f4f4f4;border:1px solid #e7e7e7;border-radius:14px;white-space:pre-wrap;word-break:normal}code{font:12px/1.62 'Cascadia Mono','Consolas',monospace}p code,li code,td code{padding:2px 5px;color:#172033;background:#f1f3f5;border-radius:4px;white-space:normal}
+            *{box-sizing:border-box}html{background:#1e1e1e;color-scheme:dark;scrollbar-color:#555 transparent;scrollbar-width:thin}
+            *::-webkit-scrollbar{width:8px;height:8px}*::-webkit-scrollbar-track{background:transparent}*::-webkit-scrollbar-thumb{min-height:28px;background:#555;background-clip:padding-box;border:2px solid transparent;border-radius:999px}*::-webkit-scrollbar-thumb:hover{background:#707070;background-clip:padding-box}*::-webkit-scrollbar-corner{background:transparent}
+            body{margin:0 auto;max-width:820px;padding:22px 34px 72px;color:#d4d4d4;background:#1e1e1e;font:10.5px/1.72 'Segoe UI Variable Text','Segoe UI','Malgun Gothic',sans-serif;word-break:keep-all;overflow-wrap:anywhere}
+            h1,h2,h3,h4,h5,h6{color:#f0f0f0;font-weight:700;letter-spacing:-.012em}
+            h1{font-size:13.3px;line-height:1.32;margin:0 0 20px}h2{font-size:11.9px;line-height:1.38;margin:30px 0 11px;padding-bottom:7px;border-bottom:1px solid #303030}h3{font-size:10.5px;line-height:1.45;margin:24px 0 8px}h4{font-size:9.8px;margin:20px 0 7px}h5{font-size:9.1px;margin:18px 0 6px}h6{font-size:8.4px;margin:16px 0 5px}
+            p{margin:0 0 14px}strong{font-weight:700;color:#f0f0f0}em{color:#b8b8b8}ul,ol{margin:5px 0 18px;padding-left:24px}li{margin:4px 0;padding-left:2px}li>p{margin:0}
+            a{color:#c8c8c8;text-decoration:underline;text-decoration-color:#555}.internal-link{color:#d1af61;font-weight:600;text-decoration:none}.internal-link:hover,a:hover{text-decoration:underline}mark{background:#5b4b24;color:#fff1c7;padding:1px 3px;border-radius:2px}
+            blockquote{margin:18px 0;padding:10px 15px;border-left:3px solid #5a5a5a;color:#c0c0c0;background:#252526;border-radius:0 5px 5px 0}blockquote>:last-child{margin-bottom:0}hr{border:0;border-top:1px solid #303030;margin:28px 0}
+            table{border-collapse:collapse;width:max-content;max-width:100%;margin:18px 0 24px;font-size:9.8px}thead{border-bottom:1px solid #404040}th,td{padding:9px 10px;text-align:left;vertical-align:top;border-bottom:1px solid #303030}th{color:#e8e8e8;font-weight:700;background:#252526}tbody tr:hover{background:#242424}
+            pre{position:relative;overflow:auto;margin:18px 0 22px;padding:17px 18px;background:#181818;border:1px solid #303030;border-radius:8px;white-space:pre-wrap;word-break:normal}code{font:9.1px/1.62 'Cascadia Mono','Consolas',monospace}p code,li code,td code{padding:2px 5px;color:#dedede;background:#2a2a2a;border-radius:3px;white-space:normal}
             .math{max-width:100%;overflow-x:auto;overflow-y:hidden}.katex-display{margin:18px 0;overflow-x:auto;overflow-y:hidden;padding:3px 0}.katex{font-size:1.05em}
-            .task-list-item{list-style:none}.task-list-item input{width:14px;height:14px;margin:0 8px 0 -22px;accent-color:#171717}.callout{display:block;margin:18px 0;padding:13px 15px;border:1px solid #cfe3da;border-left:4px solid #10a37f;border-radius:8px;background:#f4faf7}.callout-title,.callout summary{font-weight:700;color:#245f4c}.callout-content>:last-child{margin-bottom:0}
-            .note-embed{margin:18px 0;padding:14px 16px;border:1px solid #deded9;border-radius:9px;background:#fafaf8}.note-embed>header{margin-bottom:10px;color:#6558a8;font-weight:700}.internal-image{display:block;max-width:100%;height:auto;margin:18px auto;border-radius:8px}.missing-embed{color:#a35e16}.footnotes{font-size:12px;color:#71717a}
-            .fold-tools{position:sticky;top:0;z-index:10;display:flex;justify-content:flex-end;gap:6px;margin:0 0 14px;padding:7px 0;background:rgba(255,255,255,.94);backdrop-filter:blur(8px)}
-            .fold-tools button{appearance:none;border:1px solid #dededb;border-radius:6px;background:#f5f5f3;color:#404040;padding:5px 9px;font:11px 'Segoe UI Variable Text','Segoe UI',sans-serif;cursor:pointer}.fold-tools button:hover{background:#ececea}
-            .md-section{margin:0;border-bottom:1px solid #ececea}.md-section>.md-summary{display:flex;align-items:flex-start;gap:8px;padding:2px 0;list-style:none;cursor:pointer;user-select:none}.md-section>.md-summary::-webkit-details-marker{display:none}.md-section>.md-summary::before{content:'›';flex:0 0 13px;margin-top:7px;color:#8a8a85;font-size:18px;line-height:1;transition:transform .14s ease}.md-section[open]>.md-summary::before{transform:rotate(90deg)}
-            .md-section>.md-summary>h1,.md-section>.md-summary>h2,.md-section>.md-summary>h3,.md-section>.md-summary>h4,.md-section>.md-summary>h5,.md-section>.md-summary>h6{flex:1;margin:0;padding:7px 0;border:0}.md-section[data-level='1']>.md-summary>h1{font-size:19px}.md-section[data-level='2']>.md-summary>h2{font-size:17px}.md-section[data-level='3']>.md-summary>h3{font-size:15px}.md-section[data-level='4']>.md-summary>h4{font-size:13.5px}.md-section[data-level='5']>.md-summary>h5{font-size:12.5px}.md-section[data-level='6']>.md-summary>h6{font-size:11.5px}
-            .md-section>.md-section-body{padding:11px 0 15px 21px}.md-section>.md-section-body>.md-section{border-bottom:0;border-top:1px solid #f0f0ed}.md-section>.md-section-body>:last-child{margin-bottom:0}
-            .source-hover{outline:1px solid rgba(13,159,110,.22);outline-offset:3px;border-radius:3px;cursor:text}
-            @media(max-width:700px){body{padding:18px 20px 56px}table{font-size:12px}th,td{padding:7px 6px}.md-section>.md-section-body{padding-left:17px} }
+            .task-list-item{list-style:none}.task-list-item input{width:14px;height:14px;margin:0 8px 0 -22px;accent-color:#d1af61}.callout{display:block;margin:18px 0;padding:13px 15px;border:1px solid #3a3a3a;border-left:4px solid #707070;border-radius:6px;background:#252526}.callout-title,.callout summary{font-weight:700;color:#d4d4d4}.callout-content>:last-child{margin-bottom:0}
+            .note-embed{margin:18px 0;padding:14px 16px;border:1px solid #303030;border-radius:6px;background:#252526}.note-embed>header{margin-bottom:10px;color:#d1af61;font-weight:700}.internal-image{display:block;max-width:100%;height:auto;margin:18px auto;border-radius:6px}.missing-embed{color:#d0a36a}.footnotes{font-size:9.1px;color:#969696}
+            .fold-tools{position:sticky;top:0;z-index:10;display:flex;justify-content:flex-end;gap:6px;margin:0 0 14px;padding:7px 0;background:rgba(30,30,30,.94);backdrop-filter:blur(8px)}
+            .fold-tools button{appearance:none;border:1px solid #303030;border-radius:4px;background:#252526;color:#d4d4d4;padding:5px 9px;font:8.4px 'Segoe UI Variable Text','Segoe UI',sans-serif;cursor:pointer}.fold-tools button:hover{background:#333}
+            .md-section{margin:0;border-bottom:1px solid #303030}.md-section>.md-summary{display:flex;align-items:flex-start;gap:8px;padding:2px 0;list-style:none;cursor:pointer;user-select:none}.md-section>.md-summary::-webkit-details-marker{display:none}.md-section>.md-summary::before{content:'›';flex:0 0 13px;margin-top:7px;color:#969696;font-size:12.6px;line-height:1;transition:transform .14s ease}.md-section[open]>.md-summary::before{transform:rotate(90deg)}
+            .md-section>.md-summary>h1,.md-section>.md-summary>h2,.md-section>.md-summary>h3,.md-section>.md-summary>h4,.md-section>.md-summary>h5,.md-section>.md-summary>h6{flex:1;margin:0;padding:7px 0;border:0}.md-section[data-level='1']>.md-summary>h1{font-size:13.3px}.md-section[data-level='2']>.md-summary>h2{font-size:11.9px}.md-section[data-level='3']>.md-summary>h3{font-size:10.5px}.md-section[data-level='4']>.md-summary>h4{font-size:9.8px}.md-section[data-level='5']>.md-summary>h5{font-size:9.1px}.md-section[data-level='6']>.md-summary>h6{font-size:8.4px}
+            .md-section>.md-section-body{padding:11px 0 15px 21px}.md-section>.md-section-body>.md-section{border-bottom:0;border-top:1px solid #2a2a2a}.md-section>.md-section-body>:last-child{margin-bottom:0}
+            .source-hover{outline:1px solid rgba(209,175,97,.34);outline-offset:3px;border-radius:3px;cursor:text}
+            @media(max-width:700px){body{padding:18px 20px 56px}table{font-size:8.4px}th,td{padding:7px 6px}.md-section>.md-section-body{padding-left:17px} }
           </style>
         </head>
         <body>
@@ -321,7 +322,8 @@ public static class MarkdownPreviewRenderer
                   if (scrollFrame) return;
                   scrollFrame = requestAnimationFrame(() => {
                     scrollFrame = 0;
-                    window.chrome.webview.postMessage({ type: 'preview-scroll', y: window.scrollY });
+                    const maxY = Math.max(0, document.documentElement.scrollHeight - window.innerHeight);
+                    window.chrome.webview.postMessage({ type: 'preview-scroll', y: window.scrollY, maxY });
                   });
                 }, { passive: true });
               });

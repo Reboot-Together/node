@@ -1,7 +1,7 @@
 using System.Text;
 using System.Text.RegularExpressions;
 
-namespace NodeApp;
+namespace AsterismApp;
 
 public sealed record MarkdownHeadingEdit(string Text, int SelectionStart, int SelectionLength, bool Changed);
 
