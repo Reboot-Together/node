@@ -180,7 +180,7 @@ public static class MarkdownPreviewRenderer
                   summary.className = 'md-summary';
                   const sectionBody = document.createElement('div');
                   sectionBody.className = 'md-section-body';
-                  heading.title = '더블클릭해서 전체 문서 편집';
+                  heading.title = '더블클릭해서 편집기로 이동';
                   summary.appendChild(heading);
                   details.append(summary, sectionBody);
                   (stack.length ? stack[stack.length - 1].body : root).appendChild(details);
@@ -195,7 +195,7 @@ public static class MarkdownPreviewRenderer
                 if (!element || element.closest('.fold-tools,a,button,input,textarea,select')) return;
                 event.preventDefault();
                 event.stopPropagation();
-                window.chrome.webview.postMessage({ type: 'begin-document-edit' });
+                window.chrome.webview.postMessage({ type: 'focus-editor' });
               });
               if (!sectionCount) return;
               const tools = document.createElement('nav');

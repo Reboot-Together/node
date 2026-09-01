@@ -105,7 +105,7 @@
             </Grid.ColumnDefinitions>
             <TextBox x:Name="Editor" Grid.Column="0" Background="Transparent" BorderThickness="0" Padding="0,5" Margin="0,0,14,0" AcceptsReturn="True" TextWrapping="Wrap" ScrollViewer.VerticalScrollBarVisibility="Auto" FontFamily="Cascadia Mono" FontSize="12" PlaceholderText="Markdown으로 자유롭게 쓰세요.&#x0a;&#x0a;[[다른 노트 제목]]을 입력하면 자동으로 연결됩니다." TextChanged="Editor_TextChanged" KeyDown="Editor_KeyDown" LostFocus="Editor_LostFocus">
               <TextBox.KeyboardAccelerators>
-                <KeyboardAccelerator Key="Enter" Modifiers="Control" Invoked="Editor_SaveAndExit_Invoked" />
+                <KeyboardAccelerator Key="Enter" Modifiers="Control" Invoked="Editor_Save_Invoked" />
               </TextBox.KeyboardAccelerators>
             </TextBox>
             <Border x:Name="EditorPreviewDivider" Grid.Column="1" Width="1" Background="{StaticResource CardBorder}" Visibility="Collapsed" />

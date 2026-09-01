@@ -29,7 +29,6 @@ public sealed partial class MainWindow : Window
     private readonly HashSet<string> _expandedFolders = new(StringComparer.OrdinalIgnoreCase);
     private NoteInfo? _selected;
     private bool _loading;
-    private bool _previewing = true;
     private bool _previewReady;
 
     public MainWindow()
@@ -47,10 +46,7 @@ public sealed partial class MainWindow : Window
         _previewTimer = DispatcherQueue.CreateTimer();
         _previewTimer.Interval = TimeSpan.FromMilliseconds(350);
         _previewTimer.IsRepeating = false;
-        _previewTimer.Tick += (_, _) =>
-        {
-            if (!_previewing) UpdateMarkdownPreview();
-        };
+        _previewTimer.Tick += (_, _) => UpdateMarkdownPreview();
         MarkdownPreview.Loaded += MarkdownPreview_Loaded;
         RefreshNotes();
         if (_notes.Count == 0) NewNote(); else Select(_notes[0]);
@@ -91,11 +87,10 @@ public sealed partial class MainWindow : Window
             : _repository.CreateInFolder(parentFolder);
         if (parentFolder is not null) _expandedFolders.Add(parentFolder);
         RefreshNotes();
-        Select(note, openEditor: true);
-        DispatcherQueue.TryEnqueue(() => Editor.Focus(FocusState.Programmatic));
+        Select(note, focusEditor: true);
     }
 
-    private void Select(NoteInfo note, bool openEditor = false)
+    private void Select(NoteInfo note, bool focusEditor = false)
     {
         _loading = true;
         _selected = note;
@@ -106,9 +101,10 @@ public sealed partial class MainWindow : Window
         Editor.Text = note.Body;
         RevealNoteInTree(note);
         _loading = false;
-        SetPreviewMode(!openEditor);
+        ShowEditorAndPreview();
         UpdateBacklinks();
         DrawGraph();
+        if (focusEditor) DispatcherQueue.TryEnqueue(() => Editor.Focus(FocusState.Programmatic));
     }
 
     private void RevealNoteInTree(NoteInfo note)
@@ -207,11 +203,8 @@ public sealed partial class MainWindow : Window
         {
             _saveTimer.Stop();
             _saveTimer.Start();
-            if (!_previewing)
-            {
-                _previewTimer.Stop();
-                _previewTimer.Start();
-            }
+            _previewTimer.Stop();
+            _previewTimer.Start();
         }
     }
 
@@ -256,7 +249,7 @@ public sealed partial class MainWindow : Window
         if (e.Key != Windows.System.VirtualKey.Enter || !controlDown) return;
 
         e.Handled = true;
-        SaveAndExitEditor();
+        SaveEditor();
     }
 
     private void InsertAtEditorSelection(string markdown)
@@ -268,10 +261,10 @@ public sealed partial class MainWindow : Window
         Editor.SelectionLength = 0;
     }
 
-    private void Editor_SaveAndExit_Invoked(KeyboardAccelerator sender, KeyboardAcceleratorInvokedEventArgs args)
+    private void Editor_Save_Invoked(KeyboardAccelerator sender, KeyboardAcceleratorInvokedEventArgs args)
     {
         args.Handled = true;
-        SaveAndExitEditor();
+        SaveEditor();
     }
 
     private void Editor_LostFocus(object sender, RoutedEventArgs e)
@@ -280,7 +273,7 @@ public sealed partial class MainWindow : Window
         {
             var focused = FocusManager.GetFocusedElement(Root.XamlRoot) as DependencyObject;
             if (IsInside(focused, DocumentWorkspace) || MarkdownPreview.FocusState != FocusState.Unfocused) return;
-            SaveAndExitEditor();
+            SaveEditor();
         });
     }
 
@@ -298,22 +291,20 @@ public sealed partial class MainWindow : Window
         .GetKeyStateForCurrentThread(key)
         .HasFlag(CoreVirtualKeyStates.Down);
 
-    private void SaveAndExitEditor()
+    private void SaveEditor()
     {
-        if (_previewing) return;
         _previewTimer.Stop();
         _saveTimer.Stop();
         SaveCurrent();
-        SetPreviewMode(true);
+        UpdateMarkdownPreview();
     }
 
-    private void SetPreviewMode(bool preview)
+    private void ShowEditorAndPreview()
     {
-        _previewing = preview;
-        Editor.Visibility = _previewing ? Visibility.Collapsed : Visibility.Visible;
-        EditorColumn.Width = _previewing ? new GridLength(0) : new GridLength(1, GridUnitType.Star);
-        EditorPreviewDividerColumn.Width = _previewing ? new GridLength(0) : new GridLength(1);
-        EditorPreviewDivider.Visibility = _previewing ? Visibility.Collapsed : Visibility.Visible;
+        Editor.Visibility = Visibility.Visible;
+        EditorColumn.Width = new GridLength(1, GridUnitType.Star);
+        EditorPreviewDividerColumn.Width = new GridLength(1);
+        EditorPreviewDivider.Visibility = Visibility.Visible;
         MarkdownPreview.Visibility = Visibility.Visible;
         UpdateMarkdownPreview();
     }
@@ -341,11 +332,10 @@ public sealed partial class MainWindow : Window
             await MarkdownPreview.EnsureCoreWebView2Async();
             MarkdownPreview.CoreWebView2.WebMessageReceived += MarkdownPreview_WebMessageReceived;
             _previewReady = true;
-            if (_previewing) UpdateMarkdownPreview();
+            UpdateMarkdownPreview();
         }
         catch (Exception exception)
         {
-            SetPreviewMode(false);
             await ShowMessage("미리보기를 열 수 없음", $"WebView2 마크다운 미리보기를 초기화하지 못했습니다.\n\n{exception.Message}");
         }
     }
@@ -363,9 +353,8 @@ public sealed partial class MainWindow : Window
             using var message = JsonDocument.Parse(args.WebMessageAsJson);
             var root = message.RootElement;
             if (!root.TryGetProperty("type", out var type)) return;
-            if (type.GetString() == "begin-document-edit")
+            if (type.GetString() == "focus-editor")
             {
-                SetPreviewMode(false);
                 DispatcherQueue.TryEnqueue(() => Editor.Focus(FocusState.Programmatic));
             }
         }

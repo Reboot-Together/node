@@ -167,9 +167,9 @@ Recall = TP / (TP + FN)
     var sectionMarkdown = "## 첫 구역\n\n첫 본문\n\n### 하위 구역\n\n하위 본문\n\n## 둘째 구역\n\n둘째 본문";
     var sectionRender = MarkdownPreviewRenderer.Render(sectionMarkdown, root);
     if (!sectionRender.Contains("data-level='1']>.md-summary>h1{font-size:19px}") || sectionRender.Contains("data-level='1']>.md-summary>h1{font-size:22px}")) throw new Exception("노트 제목보다 작은 본문 1단계 제목 크기 적용 실패");
-    if (!sectionRender.Contains("document.addEventListener('dblclick'") || !sectionRender.Contains("type: 'begin-document-edit'") || sectionRender.Contains("document.addEventListener('pointerdown'")) throw new Exception("본문 더블클릭 전체 편집 진입 연결 실패");
+    if (!sectionRender.Contains("document.addEventListener('dblclick'") || !sectionRender.Contains("type: 'focus-editor'") || sectionRender.Contains("document.addEventListener('pointerdown'")) throw new Exception("본문 더블클릭 편집기 포커스 연결 실패");
     if (sectionRender.IndexOf("document.addEventListener('dblclick'", StringComparison.Ordinal) > sectionRender.IndexOf("if (!sectionCount) return", StringComparison.Ordinal)) throw new Exception("제목 없는 노트의 전체 편집 진입 연결 실패");
-    if (!sectionRender.Contains("heading.title = '더블클릭해서 전체 문서 편집'") || sectionRender.Contains("update-section") || sectionRender.Contains("section-editor") || sectionRender.Contains("beginEditing")) throw new Exception("수준별 편집 제거 및 제목 더블클릭 전체 편집 연결 실패");
+    if (!sectionRender.Contains("heading.title = '더블클릭해서 편집기로 이동'") || sectionRender.Contains("update-section") || sectionRender.Contains("section-editor") || sectionRender.Contains("beginEditing")) throw new Exception("수준별 편집 제거 및 제목 더블클릭 편집기 포커스 연결 실패");
     if (!sectionRender.Contains("details.open = true")) throw new Exception("제목 구역 기본 펼침 상태 적용 실패");
     if (!UpdateService.TryParseVersion("v0.1.0", out var parsedVersion) || parsedVersion != new Version(0, 1, 0) || UpdateService.TryParseVersion("latest", out _)) throw new Exception("업데이트 버전 분석 실패");
     Console.WriteLine("Node checks passed.");
