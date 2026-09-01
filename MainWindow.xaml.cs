@@ -224,14 +224,14 @@ public sealed partial class MainWindow : Window
         var controlDown = IsKeyDown(Windows.System.VirtualKey.Control)
             || IsKeyDown(Windows.System.VirtualKey.LeftControl)
             || IsKeyDown(Windows.System.VirtualKey.RightControl);
-        var shiftDown = IsKeyDown(Windows.System.VirtualKey.Shift)
-            || IsKeyDown(Windows.System.VirtualKey.LeftShift)
-            || IsKeyDown(Windows.System.VirtualKey.RightShift);
+        var altDown = IsKeyDown(Windows.System.VirtualKey.Menu)
+            || IsKeyDown(Windows.System.VirtualKey.LeftMenu)
+            || IsKeyDown(Windows.System.VirtualKey.RightMenu);
 
         var headingLevelDelta = (int)e.Key switch
         {
-            188 when shiftDown => -1,
-            190 when shiftDown => 1,
+            188 when altDown => -1,
+            190 when altDown => 1,
             _ => 0
         };
         if (headingLevelDelta != 0)
@@ -354,6 +354,14 @@ public sealed partial class MainWindow : Window
         try
         {
             await MarkdownPreview.EnsureCoreWebView2Async();
+            var mathAssetsPath = Path.Combine(AppContext.BaseDirectory, "Assets", "KaTeX");
+            if (Directory.Exists(mathAssetsPath))
+            {
+                MarkdownPreview.CoreWebView2.SetVirtualHostNameToFolderMapping(
+                    "node-assets.local",
+                    mathAssetsPath,
+                    CoreWebView2HostResourceAccessKind.Allow);
+            }
             MarkdownPreview.CoreWebView2.WebMessageReceived += MarkdownPreview_WebMessageReceived;
             _previewReady = true;
             UpdateMarkdownPreview();

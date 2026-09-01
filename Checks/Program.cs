@@ -189,6 +189,20 @@ Recall = TP / (TP + FN)
         || !rememberedScrollRender.Contains("window.scrollTo(0, initialScrollY)")
         || !rememberedScrollRender.Contains("type: 'preview-scroll'"))
         throw new Exception("미리보기 갱신 시 스크롤 위치 복원 실패");
+
+    var mathRender = MarkdownPreviewRenderer.Render("인라인 $\\sum_{i=1}^{n} x_i$\n\n$$\n\\frac{1}{n} \\sum_{i=1}^{n} x_i\n$$", root);
+    if (!mathRender.Contains("<span class=\"math\"")
+        || !mathRender.Contains("<div class=\"math\"")
+        || !mathRender.Contains("https://node-assets.local/katex.min.js")
+        || !mathRender.Contains("https://node-assets.local/auto-render.min.js")
+        || !mathRender.Contains("window.renderMathInElement(root"))
+        throw new Exception("LaTeX 수식 렌더링 연결 실패");
+
+    var chatGptMathRender = MarkdownPreviewRenderer.Render("인라인 \\(x + y\\)\n\n\\[\n\\sum_{i=1}^{n} x_i\n\\]", root);
+    if (!chatGptMathRender.Contains("<span class=\"math\">\\(x + y\\)</span>")
+        || !chatGptMathRender.Contains("<div class=\"math\">")
+        || !chatGptMathRender.Contains("\\sum_{i=1}^{n} x_i"))
+        throw new Exception("ChatGPT 스타일 LaTeX 구분자 보존 실패");
     if (!UpdateService.TryParseVersion("v0.1.0", out var parsedVersion) || parsedVersion != new Version(0, 1, 0) || UpdateService.TryParseVersion("latest", out _)) throw new Exception("업데이트 버전 분석 실패");
     Console.WriteLine("Node checks passed.");
 }

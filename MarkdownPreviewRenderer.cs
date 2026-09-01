@@ -54,6 +54,7 @@ public static class MarkdownPreviewRenderer
             }
             if (fenced) { output.AppendLine(line); continue; }
 
+            line = NormalizeMathDelimiters(line);
             line = RemoveComments(line, ref comment);
             var callout = Regex.Match(line, "^>\\s*\\[!([a-zA-Z0-9_-]+)\\]([+-])?\\s*(.*)$");
             if (callout.Success)
@@ -78,6 +79,15 @@ public static class MarkdownPreviewRenderer
             output.AppendLine(TransformWikiLinks(line, vaultPath, resolveNote, depth));
         }
         return output.ToString();
+    }
+
+    private static string NormalizeMathDelimiters(string line)
+    {
+        var blockStart = Regex.Match(line, "^(\\s*)\\\\\\[\\s*$");
+        if (blockStart.Success) return blockStart.Groups[1].Value + "$$";
+        var blockEnd = Regex.Match(line, "^(\\s*)\\\\\\]\\s*$");
+        if (blockEnd.Success) return blockEnd.Groups[1].Value + "$$";
+        return Regex.Replace(line, "\\\\\\((.+?)\\\\\\)", match => "$" + match.Groups[1].Value + "$");
     }
 
     private static string RemoveComments(string line, ref bool inComment)
@@ -147,6 +157,9 @@ public static class MarkdownPreviewRenderer
         <head>
           <meta charset="utf-8">
           <meta name="color-scheme" content="light">
+          <link rel="stylesheet" href="https://node-assets.local/katex.min.css">
+          <script src="https://node-assets.local/katex.min.js"></script>
+          <script src="https://node-assets.local/auto-render.min.js"></script>
           <style>
             *{box-sizing:border-box}html{background:#fff}
             body{margin:0 auto;max-width:820px;padding:22px 34px 72px;color:#202123;background:#fff;font:14px/1.7 'Segoe UI Variable Text','Segoe UI','Malgun Gothic',sans-serif;word-break:keep-all;overflow-wrap:anywhere}
@@ -157,6 +170,7 @@ public static class MarkdownPreviewRenderer
             blockquote{margin:18px 0;padding:10px 15px;border-left:3px solid #d1d5db;color:#52525b;background:#fafafa;border-radius:0 7px 7px 0}blockquote>:last-child{margin-bottom:0}hr{border:0;border-top:1px solid #d9dce1;margin:28px 0}
             table{border-collapse:collapse;width:max-content;max-width:100%;margin:18px 0 24px;font-size:13px}thead{border-bottom:1px solid #cfd3d8}th,td{padding:9px 10px;text-align:left;vertical-align:top;border-bottom:1px solid #e5e7eb}th{color:#18181b;font-weight:700;background:#fafafa}tbody tr:hover{background:#fafafa}
             pre{position:relative;overflow:auto;margin:18px 0 22px;padding:17px 18px;background:#f4f4f4;border:1px solid #e7e7e7;border-radius:14px;white-space:pre-wrap;word-break:normal}code{font:12px/1.62 'Cascadia Mono','Consolas',monospace}p code,li code,td code{padding:2px 5px;color:#172033;background:#f1f3f5;border-radius:4px;white-space:normal}
+            .math{max-width:100%;overflow-x:auto;overflow-y:hidden}.katex-display{margin:18px 0;overflow-x:auto;overflow-y:hidden;padding:3px 0}.katex{font-size:1.05em}
             .task-list-item{list-style:none}.task-list-item input{width:14px;height:14px;margin:0 8px 0 -22px;accent-color:#171717}.callout{display:block;margin:18px 0;padding:13px 15px;border:1px solid #cfe3da;border-left:4px solid #10a37f;border-radius:8px;background:#f4faf7}.callout-title,.callout summary{font-weight:700;color:#245f4c}.callout-content>:last-child{margin-bottom:0}
             .note-embed{margin:18px 0;padding:14px 16px;border:1px solid #deded9;border-radius:9px;background:#fafaf8}.note-embed>header{margin-bottom:10px;color:#6558a8;font-weight:700}.internal-image{display:block;max-width:100%;height:auto;margin:18px auto;border-radius:8px}.missing-embed{color:#a35e16}.footnotes{font-size:12px;color:#71717a}
             .fold-tools{position:sticky;top:0;z-index:10;display:flex;justify-content:flex-end;gap:6px;margin:0 0 14px;padding:7px 0;background:rgba(255,255,255,.94);backdrop-filter:blur(8px)}
@@ -230,6 +244,20 @@ public static class MarkdownPreviewRenderer
                 collapse.addEventListener('click', () => document.querySelectorAll('.md-section').forEach(section => section.open = false));
                 tools.append(expand, collapse);
                 root.prepend(tools);
+              }
+
+              if (window.renderMathInElement) {
+                window.renderMathInElement(root, {
+                  delimiters: [
+                    { left: '$$', right: '$$', display: true },
+                    { left: '\\[', right: '\\]', display: true },
+                    { left: '$', right: '$', display: false },
+                    { left: '\\(', right: '\\)', display: false }
+                  ],
+                  throwOnError: false,
+                  strict: false,
+                  trust: false
+                });
               }
 
               window.scrollTo(0, initialScrollY);
