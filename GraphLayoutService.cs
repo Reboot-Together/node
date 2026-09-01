@@ -145,10 +145,15 @@ public sealed class GraphLayoutService
         double height)
     {
         if (!points.TryGetValue(selectedTitle, out var focus)) return;
-        var maximumDistance = Math.Clamp(Math.Min(width, height) * .22, 110, 160);
-        foreach (var title in selectedNeighbors)
+        var neighbors = selectedNeighbors
+            .Where(points.ContainsKey)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+        var additionalRoom = Math.Min(18, Math.Max(0, neighbors.Count - 3) * 3);
+        var maximumDistance = Math.Clamp(Math.Min(width, height) * .12 + additionalRoom, 78, 104);
+        foreach (var title in neighbors)
         {
-            if (!points.TryGetValue(title, out var point)) continue;
+            var point = points[title];
             var dx = point.X - focus.X;
             var dy = point.Y - focus.Y;
             var distance = Math.Sqrt(dx * dx + dy * dy);
