@@ -224,11 +224,14 @@ public sealed partial class MainWindow : Window
         var controlDown = IsKeyDown(Windows.System.VirtualKey.Control)
             || IsKeyDown(Windows.System.VirtualKey.LeftControl)
             || IsKeyDown(Windows.System.VirtualKey.RightControl);
-        var altDown = IsKeyDown(Windows.System.VirtualKey.Menu)
+        var altDown = e.KeyStatus.IsMenuKeyDown
+            || IsKeyDown(Windows.System.VirtualKey.Menu)
             || IsKeyDown(Windows.System.VirtualKey.LeftMenu)
             || IsKeyDown(Windows.System.VirtualKey.RightMenu);
+        var originalKeyCode = (int)e.OriginalKey;
+        var keyCode = originalKeyCode is 188 or 190 ? originalKeyCode : (int)e.Key;
 
-        var headingLevelDelta = (int)e.Key switch
+        var headingLevelDelta = keyCode switch
         {
             188 when altDown => -1,
             190 when altDown => 1,
@@ -236,15 +239,15 @@ public sealed partial class MainWindow : Window
         };
         if (headingLevelDelta != 0)
         {
+            e.Handled = true;
             var edit = MarkdownHeadingLevelService.Change(Editor.Text, Editor.SelectionStart, Editor.SelectionLength, headingLevelDelta);
             if (edit.Changed)
             {
-                e.Handled = true;
                 Editor.Text = edit.Text;
                 Editor.SelectionStart = edit.SelectionStart;
                 Editor.SelectionLength = edit.SelectionLength;
-                return;
             }
+            return;
         }
 
         if (e.Key == Windows.System.VirtualKey.V && controlDown)
