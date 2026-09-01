@@ -16,7 +16,18 @@ public sealed partial class MainWindow
         var item = FindVaultItem(path);
         if (item is not { IsFolder: true, IsRoot: false }) return;
 
-        if (!_expandedFolders.Add(item.Path)) _expandedFolders.Remove(item.Path);
+        if (item.IsVirtual)
+        {
+            if (!_expandedFolders.Add(item.Path)) _expandedFolders.Remove(item.Path);
+        }
+        else
+        {
+            _folderExpansionService.ToggleExclusive(
+                _workspace.RootPath,
+                _folders,
+                _expandedFolders,
+                item.Path);
+        }
         ApplySearch();
         e.Handled = true;
     }
@@ -124,7 +135,7 @@ public sealed partial class MainWindow
                 SaveCurrent();
                 var destination = _repository.MoveFolder(source.Path, target!.Path);
                 ReplaceExpandedFolderPath(source.Path, destination);
-                _expandedFolders.Add(target.Path);
+                ExpandFolder(target.Path);
                 RefreshNotes();
                 SelectByTitle(selectedTitle);
             }
@@ -132,7 +143,7 @@ public sealed partial class MainWindow
             {
                 if (_selected?.Path == note.Path) SaveCurrent();
                 var moved = _repository.Move(note.Path, target!.Path);
-                _expandedFolders.Add(target.Path);
+                ExpandFolder(target.Path);
                 RefreshNotes();
                 if (_selected?.Path == note.Path || selectedTitle == note.Title) Select(moved);
             }
@@ -161,6 +172,14 @@ public sealed partial class MainWindow
 
     private VaultItem? FindVaultItem(string path) => _vaultItems.FirstOrDefault(item =>
         item.Path.Equals(path, StringComparison.OrdinalIgnoreCase));
+
+    private void ExpandFolder(string folder)
+    {
+        if (folder.Equals(BuiltInGuideService.FolderPath, StringComparison.OrdinalIgnoreCase))
+            _expandedFolders.Add(folder);
+        else
+            _folderExpansionService.ExpandExclusive(_workspace.RootPath, _folders, _expandedFolders, folder);
+    }
 
     private static MenuFlyoutItem MenuItem(string text, RoutedEventHandler handler)
     {

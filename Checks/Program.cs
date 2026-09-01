@@ -331,10 +331,31 @@ Recall = TP / (TP + FN)
     if (!sectionRender.Contains("if (sectionCount)")) throw new Exception("제목 없는 노트의 미리보기 상호작용 연결 실패");
     if (!sectionRender.Contains("heading.title = '클릭해서 접기 또는 펼치기'") || sectionRender.Contains("update-section") || sectionRender.Contains("section-editor") || sectionRender.Contains("beginEditing")) throw new Exception("수준별 편집 제거 및 제목 접기 연결 실패");
     if (!sectionRender.Contains("initialFoldStates[foldKey] : true")) throw new Exception("제목 구역 기본 펼침 상태 적용 실패");
-    if (!sectionRender.Contains("exclusiveSections")
-        || !sectionRender.Contains("details.parentElement?.children")
-        || !sectionRender.Contains("openSiblings.slice(1)"))
-        throw new Exception("동일 수준 제목 상호 배타 접기 실패");
+    if (sectionRender.Contains("exclusiveSections")
+        || sectionRender.Contains("details.parentElement?.children")
+        || !sectionRender.Contains("document.querySelectorAll('.md-section').forEach(section => section.open = true)"))
+        throw new Exception("본문 제목의 독립 접기와 모두 펼치기 복원 실패");
+
+    var folderExpansionService = new FolderExpansionService();
+    var expansionRoot = Path.Combine(root, "accordion");
+    var expansionFolders = new[]
+    {
+        expansionRoot,
+        Path.Combine(expansionRoot, "A"),
+        Path.Combine(expansionRoot, "B"),
+        Path.Combine(expansionRoot, "A", "A1"),
+        Path.Combine(expansionRoot, "A", "A2")
+    };
+    var expandedFolders = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+    folderExpansionService.InitializeDefaults(expansionRoot, expansionFolders, expandedFolders);
+    if (expandedFolders.Count(folder => Path.GetDirectoryName(folder)?.Equals(expansionRoot, StringComparison.OrdinalIgnoreCase) == true) != 1)
+        throw new Exception("탐색기 형제 폴더 기본 상호 배타 상태 실패");
+    folderExpansionService.ExpandExclusive(expansionRoot, expansionFolders, expandedFolders, expansionFolders[2]);
+    if (!expandedFolders.Contains(expansionFolders[2]) || expandedFolders.Contains(expansionFolders[1]))
+        throw new Exception("탐색기 같은 수준 폴더 상호 배타 펼침 실패");
+    folderExpansionService.ExpandExclusive(expansionRoot, expansionFolders, expandedFolders, expansionFolders[4]);
+    if (!expandedFolders.Contains(expansionFolders[4]) || expandedFolders.Contains(expansionFolders[3]))
+        throw new Exception("탐색기 하위 폴더 독립 그룹 처리 실패");
 
     var guideService = new BuiltInGuideService();
     var guideItems = guideService.BuildItems(

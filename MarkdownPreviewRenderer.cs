@@ -236,7 +236,6 @@ public static class MarkdownPreviewRenderer
               const stack = [];
               const foldKeyCounts = new Map();
               let sectionCount = 0;
-              let exclusiveSections = true;
               for (const node of originalNodes) {
                 const heading = node.nodeType === Node.ELEMENT_NODE && /^H[1-6]$/.test(node.tagName) ? node : null;
                 if (heading) {
@@ -251,11 +250,6 @@ public static class MarkdownPreviewRenderer
                   details.dataset.foldKey = foldKey;
                   details.open = Object.hasOwn(initialFoldStates, foldKey) ? initialFoldStates[foldKey] : true;
                   details.addEventListener('toggle', () => {
-                    if (details.open && exclusiveSections) {
-                      const siblings = Array.from(details.parentElement?.children || [])
-                        .filter(candidate => candidate !== details && candidate.classList?.contains('md-section') && candidate.open);
-                      siblings.forEach(sibling => sibling.open = false);
-                    }
                     window.chrome.webview.postMessage({ type: 'fold-state', key: foldKey, open: details.open });
                   });
                   details.dataset.level = String(level);
@@ -272,10 +266,6 @@ public static class MarkdownPreviewRenderer
                 } else {
                   (stack.length ? stack[stack.length - 1].body : root).appendChild(node);
                 }
-              }
-              for (const parent of [root, ...root.querySelectorAll('.md-section-body')]) {
-                const openSiblings = Array.from(parent.children).filter(child => child.classList?.contains('md-section') && child.open);
-                openSiblings.slice(1).forEach(section => section.open = false);
               }
               const sourceTarget = event => {
                 const element = event.target instanceof Element ? event.target : event.target.parentElement;
@@ -327,11 +317,7 @@ public static class MarkdownPreviewRenderer
                 const expand = document.createElement('button');
                 expand.type = 'button';
                 expand.textContent = '모두 펼치기';
-                expand.addEventListener('click', () => {
-                  exclusiveSections = false;
-                  document.querySelectorAll('.md-section').forEach(section => section.open = true);
-                  setTimeout(() => exclusiveSections = true, 100);
-                });
+                expand.addEventListener('click', () => document.querySelectorAll('.md-section').forEach(section => section.open = true));
                 const collapse = document.createElement('button');
                 collapse.type = 'button';
                 collapse.textContent = '모두 접기';

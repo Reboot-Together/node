@@ -67,7 +67,9 @@ public sealed partial class MainWindow
         };
         var storagePathText = new TextBlock
         {
-            Text = _workspace.RootPath,
+            Text = _workspace.UnavailableRootPath is null
+                ? _workspace.RootPath
+                : $"현재 임시 저장소: {_workspace.RootPath}\n연결되지 않은 저장소: {_workspace.UnavailableRootPath}",
             TextWrapping = TextWrapping.Wrap,
             Foreground = (Brush)Application.Current.Resources["MutedText"]
         };

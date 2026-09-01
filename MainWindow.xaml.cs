@@ -22,6 +22,7 @@ public sealed partial class MainWindow : Window
     private readonly NoteLinkService _linkService = new();
     private readonly NoteImageService _imageService = new();
     private readonly VaultTreeService _vaultTreeService = new();
+    private readonly FolderExpansionService _folderExpansionService = new();
     private readonly BuiltInGuideService _guideService = new();
     private readonly DispatcherQueueTimer _saveTimer;
     private readonly DispatcherQueueTimer _previewTimer;
@@ -86,7 +87,7 @@ public sealed partial class MainWindow : Window
         _folders = _vaultTreeService.LoadFolders(_workspace.RootPath);
         if (!_folderExpansionInitialized)
         {
-            _expandedFolders.UnionWith(_folders);
+            _folderExpansionService.InitializeDefaults(_workspace.RootPath, _folders, _expandedFolders);
             _expandedFolders.Add(BuiltInGuideService.FolderPath);
             _folderExpansionInitialized = true;
         }
@@ -120,7 +121,7 @@ public sealed partial class MainWindow : Window
         var note = parentFolder is null
             ? _repository.Create()
             : _repository.CreateInFolder(parentFolder);
-        if (parentFolder is not null) _expandedFolders.Add(parentFolder);
+        if (parentFolder is not null) ExpandFolder(parentFolder);
         RefreshNotes();
         Select(note, focusEditor: true);
     }
@@ -153,8 +154,12 @@ public sealed partial class MainWindow : Window
         if (note.IsReadOnly)
             treeChanged |= _expandedFolders.Add(BuiltInGuideService.FolderPath);
         else
-            foreach (var folder in _vaultTreeService.AncestorFolders(_workspace.RootPath, note.Path))
-                treeChanged |= _expandedFolders.Add(folder);
+            foreach (var folder in _vaultTreeService.AncestorFolders(_workspace.RootPath, note.Path).Reverse())
+            {
+                var before = _expandedFolders.ToHashSet(StringComparer.OrdinalIgnoreCase);
+                _folderExpansionService.ExpandExclusive(_workspace.RootPath, _folders, _expandedFolders, folder);
+                treeChanged |= !before.SetEquals(_expandedFolders);
+            }
 
         var item = treeChanged
             ? null

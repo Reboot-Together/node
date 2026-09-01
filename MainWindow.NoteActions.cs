@@ -23,9 +23,10 @@ public sealed partial class MainWindow
         try
         {
             var folder = _repository.CreateFolder(parent, name);
-            _expandedFolders.Add(parent);
-            _expandedFolders.Add(folder);
             RefreshFolders();
+            ExpandFolder(parent);
+            ExpandFolder(folder);
+            ApplySearch();
         }
         catch (Exception exception)
         {
