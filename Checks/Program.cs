@@ -163,7 +163,7 @@ try
     var focusedPoint = graphLayout.Points[source.Title];
     if (graphLayout.SelectedNeighbors.Any(title =>
         graphLayout.Points.TryGetValue(title, out var neighbor)
-        && Math.Sqrt(Math.Pow(neighbor.X - focusedPoint.X, 2) + Math.Pow(neighbor.Y - focusedPoint.Y, 2)) > 52.01))
+        && Math.Sqrt(Math.Pow(neighbor.X - focusedPoint.X, 2) + Math.Pow(neighbor.Y - focusedPoint.Y, 2)) > 39.01))
         throw new Exception("현재 노트 주변 선택 별의 초기 밀집 배치 실패");
     var focus = graphLayout.Points[source.Title];
     var directions = graphLayout.Points
@@ -182,6 +182,17 @@ try
         throw new Exception("그래프 배치의 실행 간 결정성 실패");
     graphService.Calculate(networkNotes, graphLinks, 720, 1200, null);
     if (graphService.SimulationRuns != 1) throw new Exception("동일 그래프 레이아웃 캐시 재사용 실패");
+    var relationshipDepths = GraphLayoutService.RelationshipDepths("A", new Dictionary<string, List<string>>
+    {
+        ["A"] = ["B"],
+        ["B"] = ["C"],
+        ["C"] = ["D"]
+    }, 2);
+    if (relationshipDepths.GetValueOrDefault("A") != 0
+        || relationshipDepths.GetValueOrDefault("B") != 1
+        || relationshipDepths.GetValueOrDefault("C") != 2
+        || relationshipDepths.ContainsKey("D"))
+        throw new Exception("그래프 2차 연관성 강조 범위 계산 실패");
     var zoomedViewport = GraphViewportService.CalculateZoomedViewportOffset(
         new GraphPoint(100, 50),
         new GraphPoint(200, 150),

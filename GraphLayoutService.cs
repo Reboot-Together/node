@@ -18,6 +18,41 @@ public sealed class GraphLayoutService
     private Dictionary<string, GraphPoint> _cachedPoints = new(StringComparer.OrdinalIgnoreCase);
     internal int SimulationRuns { get; private set; }
 
+    public static IReadOnlyDictionary<string, int> RelationshipDepths(
+        string? selectedTitle,
+        IReadOnlyDictionary<string, List<string>> links,
+        int maximumDepth)
+    {
+        var depths = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+        if (string.IsNullOrWhiteSpace(selectedTitle) || maximumDepth < 0) return depths;
+
+        var queue = new Queue<string>();
+        depths[selectedTitle] = 0;
+        queue.Enqueue(selectedTitle);
+        while (queue.Count > 0)
+        {
+            var current = queue.Dequeue();
+            var nextDepth = depths[current] + 1;
+            if (nextDepth > maximumDepth) continue;
+
+            if (links.TryGetValue(current, out var outgoingTargets))
+                foreach (var target in outgoingTargets)
+                    Add(target, nextDepth);
+            foreach (var (source, incomingTargets) in links)
+                if (incomingTargets.Contains(current, StringComparer.OrdinalIgnoreCase))
+                    Add(source, nextDepth);
+        }
+
+        return depths;
+
+        void Add(string title, int depth)
+        {
+            if (depths.ContainsKey(title)) return;
+            depths[title] = depth;
+            queue.Enqueue(title);
+        }
+    }
+
     public GraphLayout Calculate(
         IReadOnlyList<NoteInfo> notes,
         IReadOnlyDictionary<string, List<string>> links,
@@ -110,7 +145,7 @@ public sealed class GraphLayoutService
         var meanX = others.Average(item => Math.Cos(item.Angle));
         var meanY = others.Average(item => Math.Sin(item.Angle));
         var directionalBias = Math.Sqrt(meanX * meanX + meanY * meanY);
-        var maximumRadius = Math.Max(80, Math.Min(width, height) / 2 - 38);
+        var maximumRadius = Math.Max(60, (Math.Min(width, height) / 2 - 38) * .75);
 
         if (others.Count >= 3 && directionalBias > .32)
         {
@@ -121,7 +156,7 @@ public sealed class GraphLayoutService
                 var item = others[index];
                 var jitter = ((StableSeed(item.Key) & 255) / 255d - .5) * Math.Min(.16, spacing * .22);
                 var angle = phase + index * spacing + jitter;
-                var radius = Math.Clamp(item.Distance, 42, maximumRadius);
+                var radius = Math.Clamp(item.Distance * .75, 32, maximumRadius);
                 points[item.Key] = new GraphPoint(
                     focus.X + Math.Cos(angle) * radius,
                     focus.Y + Math.Sin(angle) * radius);
@@ -149,8 +184,8 @@ public sealed class GraphLayoutService
             .Where(points.ContainsKey)
             .Distinct(StringComparer.OrdinalIgnoreCase)
             .ToList();
-        var additionalRoom = Math.Min(9, Math.Max(0, neighbors.Count - 3) * 1.5);
-        var maximumDistance = Math.Clamp(Math.Min(width, height) * .06 + additionalRoom, 39, 52);
+        var additionalRoom = Math.Min(7, Math.Max(0, neighbors.Count - 3) * 1.25);
+        var maximumDistance = Math.Clamp(Math.Min(width, height) * .045 + additionalRoom, 29, 39);
         foreach (var title in neighbors)
         {
             var point = points[title];
@@ -184,7 +219,7 @@ public sealed class GraphLayoutService
     private static GraphPoint InitialPoint(string title, double width, double height)
     {
         var random = new Random(StableSeed(title));
-        return new GraphPoint(width * (.12 + random.NextDouble() * .76), height * (.14 + random.NextDouble() * .72));
+        return new GraphPoint(width * (.18 + random.NextDouble() * .64), height * (.18 + random.NextDouble() * .64));
     }
 
     private static int StableSeed(string value)
@@ -205,8 +240,8 @@ public sealed class GraphLayoutService
     {
         var first = points[a]; var second = points[b];
         var dx = first.X - second.X; var dy = first.Y - second.Y;
-        var distance = Math.Max(18, Math.Sqrt(dx * dx + dy * dy));
-        var pull = Math.Min(5.5, 1800 / (distance * distance));
+        var distance = Math.Max(14, Math.Sqrt(dx * dx + dy * dy));
+        var pull = Math.Min(4.5, 1050 / (distance * distance));
         var x = dx / distance * pull; var y = dy / distance * pull;
         forces[a] += new GraphPoint(x, y); forces[b] -= new GraphPoint(x, y);
     }
@@ -216,7 +251,7 @@ public sealed class GraphLayoutService
         var first = points[a]; var second = points[b];
         var dx = second.X - first.X; var dy = second.Y - first.Y;
         var distance = Math.Max(1, Math.Sqrt(dx * dx + dy * dy));
-        var pull = (distance - 118) * .008;
+        var pull = (distance - 82) * .01;
         var x = dx / distance * pull; var y = dy / distance * pull;
         forces[a] += new GraphPoint(x, y); forces[b] -= new GraphPoint(x, y);
     }

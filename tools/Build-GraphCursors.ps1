@@ -22,48 +22,93 @@ $directions = [ordered]@{
     ese = 337.5
 }
 
-$referencePath = Join-Path $PSScriptRoot 'assets\ship-reference.jpg'
-$reference = [System.Drawing.Bitmap]::FromFile($referencePath)
+$referencePath = Join-Path $PSScriptRoot 'assets\ship-reference.png'
+$original = [System.Drawing.Bitmap]::FromFile($referencePath)
+$reference = New-Object System.Drawing.Bitmap 256, 256, ([System.Drawing.Imaging.PixelFormat]::Format32bppArgb)
+$referenceGraphics = [System.Drawing.Graphics]::FromImage($reference)
+$referenceGraphics.SmoothingMode = [System.Drawing.Drawing2D.SmoothingMode]::AntiAlias
+$referenceGraphics.InterpolationMode = [System.Drawing.Drawing2D.InterpolationMode]::HighQualityBicubic
+$referenceGraphics.DrawImage($original, 0, 0, 256, 256)
+$referenceGraphics.Dispose()
+$original.Dispose()
+
 $minX = $reference.Width
 $minY = $reference.Height
 $maxX = 0
 $maxY = 0
+$flameLeft = New-Object int[] $reference.Height
+$flameRight = New-Object int[] $reference.Height
+for ($y = 0; $y -lt $reference.Height; $y++) {
+    $flameLeft[$y] = $reference.Width
+    $flameRight[$y] = -1
+}
 for ($y = 0; $y -lt $reference.Height; $y++) {
     for ($x = 0; $x -lt $reference.Width; $x++) {
         $pixel = $reference.GetPixel($x, $y)
         $luminance = ($pixel.R + $pixel.G + $pixel.B) / 3
-        if ($luminance -lt 210) {
+        $maximumChannel = [Math]::Max($pixel.R, [Math]::Max($pixel.G, $pixel.B))
+        $minimumChannel = [Math]::Min($pixel.R, [Math]::Min($pixel.G, $pixel.B))
+        if ($luminance -lt 205 -and $maximumChannel - $minimumChannel -lt 48) {
             $minX = [Math]::Min($minX, $x)
             $minY = [Math]::Min($minY, $y)
             $maxX = [Math]::Max($maxX, $x)
             $maxY = [Math]::Max($maxY, $y)
+        }
+        if ($pixel.R -gt 170 -and $pixel.G -gt 90 -and $pixel.R - $pixel.B -gt 35 -and $pixel.G - $pixel.B -gt 15) {
+            $flameLeft[$y] = [Math]::Min($flameLeft[$y], $x)
+            $flameRight[$y] = [Math]::Max($flameRight[$y], $x)
         }
     }
 }
 
 $sourceWidth = $maxX - $minX + 1
 $sourceHeight = $maxY - $minY + 1
-$source = New-Object System.Drawing.Bitmap $sourceWidth, $sourceHeight, ([System.Drawing.Imaging.PixelFormat]::Format32bppArgb)
-for ($y = 0; $y -lt $sourceHeight; $y++) {
-    for ($x = 0; $x -lt $sourceWidth; $x++) {
-        $pixel = $reference.GetPixel($minX + $x, $minY + $y)
+$bodyCenterX = ($minX + $maxX) / 2
+$bodyCenterY = ($minY + $maxY) / 2
+$sourceScale = 30 / [Math]::Max($sourceWidth, $sourceHeight)
+$idleSource = New-Object System.Drawing.Bitmap $reference.Width, $reference.Height, ([System.Drawing.Imaging.PixelFormat]::Format32bppArgb)
+$movingSource = New-Object System.Drawing.Bitmap $reference.Width, $reference.Height, ([System.Drawing.Imaging.PixelFormat]::Format32bppArgb)
+for ($y = 0; $y -lt $reference.Height; $y++) {
+    for ($x = 0; $x -lt $reference.Width; $x++) {
+        $pixel = $reference.GetPixel($x, $y)
         $luminance = ($pixel.R + $pixel.G + $pixel.B) / 3
-        $alpha = [Math]::Clamp([int]((242 - $luminance) * 1.7), 0, 255)
-        $source.SetPixel($x, $y, [System.Drawing.Color]::FromArgb($alpha, 240, 242, 244))
+        $maximumChannel = [Math]::Max($pixel.R, [Math]::Max($pixel.G, $pixel.B))
+        $minimumChannel = [Math]::Min($pixel.R, [Math]::Min($pixel.G, $pixel.B))
+        if ($luminance -lt 220 -and $maximumChannel - $minimumChannel -lt 52) {
+            $alpha = [Math]::Clamp([int]((235 - $luminance) * 2.2), 0, 255)
+            $bodyColor = [System.Drawing.Color]::FromArgb($alpha, 240, 242, 244)
+            $idleSource.SetPixel($x, $y, $bodyColor)
+            $movingSource.SetPixel($x, $y, $bodyColor)
+        }
+        elseif ($flameRight[$y] -ge 0 -and $x -ge $flameLeft[$y] -and $x -le $flameRight[$y]) {
+            $flameColor = if ($pixel.R -gt 245 -and $pixel.G -gt 245 -and $pixel.B -gt 245) {
+                [System.Drawing.Color]::FromArgb(255, 255, 249, 214)
+            }
+            else {
+                [System.Drawing.Color]::FromArgb(255, $pixel.R, $pixel.G, $pixel.B)
+            }
+            $movingSource.SetPixel($x, $y, $flameColor)
+        }
     }
 }
 
+$motionStates = [ordered]@{
+    ''        = $false
+    '-moving' = $true
+}
+
 foreach ($entry in $directions.GetEnumerator()) {
+  foreach ($motion in $motionStates.GetEnumerator()) {
     $large = New-Object System.Drawing.Bitmap 64, 64, ([System.Drawing.Imaging.PixelFormat]::Format32bppArgb)
     $graphics = [System.Drawing.Graphics]::FromImage($large)
     $graphics.SmoothingMode = [System.Drawing.Drawing2D.SmoothingMode]::AntiAlias
     $graphics.PixelOffsetMode = [System.Drawing.Drawing2D.PixelOffsetMode]::HighQuality
     $graphics.InterpolationMode = [System.Drawing.Drawing2D.InterpolationMode]::HighQualityBicubic
     $graphics.TranslateTransform(32, 32)
-    $graphics.RotateTransform([single](128 - $entry.Value))
-    $graphics.ScaleTransform(.29, .29)
-    $graphics.TranslateTransform(-$sourceWidth / 2, -$sourceHeight / 2)
-    $graphics.DrawImageUnscaled($source, 0, 0)
+    $graphics.RotateTransform([single](90 - $entry.Value))
+    $graphics.ScaleTransform($sourceScale, $sourceScale)
+    $graphics.TranslateTransform(-$bodyCenterX, -$bodyCenterY)
+    $graphics.DrawImageUnscaled($(if ($motion.Value) { $movingSource } else { $idleSource }), 0, 0)
 
     $small = New-Object System.Drawing.Bitmap 32, 32, ([System.Drawing.Imaging.PixelFormat]::Format32bppArgb)
     $downsample = [System.Drawing.Graphics]::FromImage($small)
@@ -95,7 +140,7 @@ foreach ($entry in $directions.GetEnumerator()) {
     }
     $dibWriter.Write((New-Object byte[] 128))
     $image = $dib.ToArray()
-    $path = Join-Path $OutputDirectory "ship-$($entry.Key).cur"
+    $path = Join-Path $OutputDirectory "ship-$($entry.Key)$($motion.Key).cur"
     $stream = [System.IO.File]::Create($path)
     $writer = New-Object System.IO.BinaryWriter $stream
     $writer.Write([uint16]0)
@@ -118,7 +163,9 @@ foreach ($entry in $directions.GetEnumerator()) {
     $small.Dispose()
     $graphics.Dispose()
     $large.Dispose()
+  }
 }
 
-$source.Dispose()
+$movingSource.Dispose()
+$idleSource.Dispose()
 $reference.Dispose()

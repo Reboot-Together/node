@@ -8,40 +8,41 @@ public sealed class DirectionalCursorCanvas : Canvas
 {
     private const string CursorModuleName = "Asterism.CursorResources.dll";
 
-    private readonly Dictionary<GraphCursorDirection, InputCursor> _cursors = [];
+    private readonly Dictionary<(GraphCursorDirection Direction, bool Moving), InputCursor> _cursors = [];
     private Assembly? _cursorModule;
-    private GraphCursorDirection? _direction;
+    private (GraphCursorDirection Direction, bool Moving)? _state;
     private bool _customCursorsUnavailable;
 
-    public void SetCursor(GraphCursorDirection direction)
+    public void SetCursor(GraphCursorDirection direction, bool moving = false)
     {
-        if (_customCursorsUnavailable || _direction == direction) return;
+        var state = (direction, moving);
+        if (_customCursorsUnavailable || _state == state) return;
 
         try
         {
-            if (!_cursors.TryGetValue(direction, out var cursor))
+            if (!_cursors.TryGetValue(state, out var cursor))
             {
                 _cursorModule ??= Assembly.LoadFrom(Path.Combine(AppContext.BaseDirectory, CursorModuleName));
                 cursor = InputDesktopResourceCursor.CreateFromModule(
                     _cursorModule.ManifestModule.Name,
-                    (uint)(201 + (int)direction));
-                _cursors.Add(direction, cursor);
+                    (uint)(201 + (int)direction + (moving ? 16 : 0)));
+                _cursors.Add(state, cursor);
             }
 
             ProtectedCursor = cursor;
-            _direction = direction;
+            _state = state;
         }
         catch
         {
             _customCursorsUnavailable = true;
-            _direction = null;
+            _state = null;
             TryRestoreDefaultCursor();
         }
     }
 
     public void ResetCursor()
     {
-        _direction = null;
+        _state = null;
         TryRestoreDefaultCursor();
     }
 

@@ -30,6 +30,8 @@ public sealed partial class MainWindow
     private readonly List<Visual> _graphTwinkleVisuals = [];
     private GraphPoint? _graphCursorLastPoint;
     private GraphCursorDirection? _graphCursorDirection;
+    private Microsoft.UI.Dispatching.DispatcherQueueTimer? _graphCursorIdleTimer;
+    private bool _graphCursorMoving;
 
     private void GraphZoomIn_Click(object sender, RoutedEventArgs e)
     {
@@ -93,6 +95,7 @@ public sealed partial class MainWindow
 
         var selectedTitle = _selected?.Title;
         var graphLinks = MergeGraphLinks(_noteLinks, _semanticLinks, notes.Select(note => note.Title));
+        var relationshipDepths = GraphLayoutService.RelationshipDepths(selectedTitle, graphLinks, 2);
         var layout = _graphLayoutService.Calculate(
             notes,
             graphLinks,
@@ -113,8 +116,13 @@ public sealed partial class MainWindow
                 var from = ScaleGraphPoint(layout.Points[source]);
                 var to = ScaleGraphPoint(layout.Points[target]);
                 var explicitLink = HasGraphEdge(_noteLinks, source, target);
-                var highlighted = source.Equals(selectedTitle, StringComparison.OrdinalIgnoreCase)
+                var direct = source.Equals(selectedTitle, StringComparison.OrdinalIgnoreCase)
                     || target.Equals(selectedTitle, StringComparison.OrdinalIgnoreCase);
+                var withinConstellation = relationshipDepths.TryGetValue(source, out var sourceDepth)
+                    && relationshipDepths.TryGetValue(target, out var targetDepth)
+                    && sourceDepth <= 2
+                    && targetDepth <= 2;
+                var emphasis = direct ? 1 : withinConstellation ? 2 : 0;
                 var line = new Line
                 {
                     X1 = from.X,
@@ -122,13 +130,19 @@ public sealed partial class MainWindow
                     X2 = to.X,
                     Y2 = to.Y,
                     Stroke = new SolidColorBrush(explicitLink
-                        ? highlighted
-                            ? GraphAccent(240, bright: true)
-                            : ColorHelper.FromArgb(145, 190, 190, 190)
-                        : highlighted
-                            ? ColorHelper.FromArgb(110, 165, 165, 165)
-                            : ColorHelper.FromArgb(50, 125, 125, 125)),
-                    StrokeThickness = (highlighted ? 1.6 : .9) * visualScale
+                        ? emphasis switch
+                        {
+                            1 => GraphAccent(240, bright: true),
+                            2 => GraphAccent(150),
+                            _ => ColorHelper.FromArgb(72, 150, 150, 150)
+                        }
+                        : emphasis switch
+                        {
+                            1 => ColorHelper.FromArgb(120, 175, 175, 175),
+                            2 => ColorHelper.FromArgb(82, 150, 150, 150),
+                            _ => ColorHelper.FromArgb(38, 115, 115, 115)
+                        }),
+                    StrokeThickness = (emphasis switch { 1 => 1.6, 2 => 1.15, _ => .72 }) * visualScale
                 };
                 GraphCanvas.Children.Add(line);
             }
@@ -210,8 +224,9 @@ public sealed partial class MainWindow
         if (e.Pointer.PointerDeviceType != Microsoft.UI.Input.PointerDeviceType.Mouse) return;
         var point = e.GetCurrentPoint(GraphScroll).Position;
         _graphCursorLastPoint = new GraphPoint(point.X, point.Y);
-        GraphCanvas.SetCursor(GraphCursorDirection.East);
+        GraphCanvas.SetCursor(GraphCursorDirection.East, moving: false);
         _graphCursorDirection = GraphCursorDirection.East;
+        _graphCursorMoving = false;
     }
 
     private void GraphCanvas_PointerExited(object sender, PointerRoutedEventArgs e)
@@ -246,12 +261,14 @@ public sealed partial class MainWindow
             if (dx * dx + dy * dy >= 4)
             {
                 var direction = GraphViewportService.QuantizeCursorDirection(previous, current);
-                if (_graphCursorDirection != direction)
+                if (_graphCursorDirection != direction || !_graphCursorMoving)
                 {
-                    GraphCanvas.SetCursor(direction);
+                    GraphCanvas.SetCursor(direction, moving: true);
                     _graphCursorDirection = direction;
+                    _graphCursorMoving = true;
                 }
                 _graphCursorLastPoint = current;
+                RestartGraphCursorIdleTimer();
             }
         }
         else
@@ -262,9 +279,30 @@ public sealed partial class MainWindow
 
     private void ResetGraphDirectionalCursor()
     {
+        _graphCursorIdleTimer?.Stop();
         GraphCanvas?.ResetCursor();
         _graphCursorLastPoint = null;
         _graphCursorDirection = null;
+        _graphCursorMoving = false;
+    }
+
+    private void RestartGraphCursorIdleTimer()
+    {
+        if (_graphCursorIdleTimer is null)
+        {
+            _graphCursorIdleTimer = DispatcherQueue.CreateTimer();
+            _graphCursorIdleTimer.Interval = TimeSpan.FromMilliseconds(120);
+            _graphCursorIdleTimer.IsRepeating = false;
+            _graphCursorIdleTimer.Tick += (_, _) =>
+            {
+                if (_graphCursorDirection is not { } direction) return;
+                GraphCanvas.SetCursor(direction, moving: false);
+                _graphCursorMoving = false;
+            };
+        }
+
+        _graphCursorIdleTimer.Stop();
+        _graphCursorIdleTimer.Start();
     }
 
     private void GraphCanvas_PointerReleased(object sender, PointerRoutedEventArgs e)
