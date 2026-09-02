@@ -163,7 +163,7 @@ try
     var focusedPoint = graphLayout.Points[source.Title];
     if (graphLayout.SelectedNeighbors.Any(title =>
         graphLayout.Points.TryGetValue(title, out var neighbor)
-        && Math.Sqrt(Math.Pow(neighbor.X - focusedPoint.X, 2) + Math.Pow(neighbor.Y - focusedPoint.Y, 2)) > 104.01))
+        && Math.Sqrt(Math.Pow(neighbor.X - focusedPoint.X, 2) + Math.Pow(neighbor.Y - focusedPoint.Y, 2)) > 52.01))
         throw new Exception("현재 노트 주변 선택 별의 초기 밀집 배치 실패");
     var focus = graphLayout.Points[source.Title];
     var directions = graphLayout.Points

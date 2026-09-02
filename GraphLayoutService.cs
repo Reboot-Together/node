@@ -149,8 +149,8 @@ public sealed class GraphLayoutService
             .Where(points.ContainsKey)
             .Distinct(StringComparer.OrdinalIgnoreCase)
             .ToList();
-        var additionalRoom = Math.Min(18, Math.Max(0, neighbors.Count - 3) * 3);
-        var maximumDistance = Math.Clamp(Math.Min(width, height) * .12 + additionalRoom, 78, 104);
+        var additionalRoom = Math.Min(9, Math.Max(0, neighbors.Count - 3) * 1.5);
+        var maximumDistance = Math.Clamp(Math.Min(width, height) * .06 + additionalRoom, 39, 52);
         foreach (var title in neighbors)
         {
             var point = points[title];
