@@ -7,7 +7,17 @@ public enum GraphLabelMode
     Detail
 }
 
-public readonly record struct GraphCursorMotion(double Angle, double FlameStrength);
+public enum GraphCursorDirection
+{
+    East,
+    NorthEast,
+    North,
+    NorthWest,
+    West,
+    SouthWest,
+    South,
+    SouthEast
+}
 
 public static class GraphViewportService
 {
@@ -45,13 +55,11 @@ public static class GraphViewportService
         return (baseRadius + degreeRadius) * VisualScale(zoom);
     }
 
-    public static GraphCursorMotion CalculateCursorMotion(GraphPoint previous, GraphPoint current, double elapsedSeconds)
+    public static GraphCursorDirection QuantizeCursorDirection(GraphPoint previous, GraphPoint current)
     {
         var dx = current.X - previous.X;
         var dy = current.Y - previous.Y;
-        var distance = Math.Sqrt(dx * dx + dy * dy);
-        var angle = distance < .25 ? 0 : Math.Atan2(dy, dx) * 180 / Math.PI + 90;
-        var speed = distance / Math.Max(.008, elapsedSeconds);
-        return new GraphCursorMotion(angle, Math.Clamp((speed - 35) / 900, 0, 1));
+        var angle = (Math.Atan2(-dy, dx) * 180 / Math.PI + 360) % 360;
+        return (GraphCursorDirection)((int)Math.Round(angle / 45, MidpointRounding.AwayFromZero) % 8);
     }
 }

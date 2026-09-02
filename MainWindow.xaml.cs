@@ -75,11 +75,11 @@ public sealed partial class MainWindow : Window
         Activated += (_, args) =>
         {
             if (args.WindowActivationState == WindowActivationState.Deactivated)
-                HideGraphShipCursor();
+                ResetGraphDirectionalCursor();
         };
         Closed += (_, _) =>
         {
-            HideGraphShipCursor();
+            ResetGraphDirectionalCursor();
             SaveSideDocuments();
             SaveCurrent();
             _uiLayoutSettingsService.Save(_uiLayoutSettings);

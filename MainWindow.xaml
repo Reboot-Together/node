@@ -209,25 +209,9 @@
               <Button Grid.Column="3" Content="＋" Style="{StaticResource QuietButton}" Padding="7,2" MinWidth="0" Click="GraphZoomIn_Click" />
             </Grid>
             <Border Grid.Row="1" Background="#151515" BorderBrush="#303030" BorderThickness="1" CornerRadius="6" Padding="3">
-              <Grid>
-                <ScrollViewer x:Name="GraphScroll" HorizontalScrollBarVisibility="Hidden" VerticalScrollBarVisibility="Hidden" HorizontalContentAlignment="Center" VerticalContentAlignment="Center" ZoomMode="Disabled" SizeChanged="GraphScroll_SizeChanged">
-                  <Canvas x:Name="GraphCanvas" Width="720" Height="1200" Background="#151515" DoubleTapped="GraphCanvas_DoubleTapped" PointerEntered="GraphCanvas_PointerEntered" PointerExited="GraphCanvas_PointerExited" PointerPressed="GraphCanvas_PointerPressed" PointerMoved="GraphCanvas_PointerMoved" PointerReleased="GraphCanvas_PointerReleased" PointerCanceled="GraphCanvas_PointerReleased" PointerCaptureLost="GraphCanvas_PointerReleased" />
-                </ScrollViewer>
-                <Canvas x:Name="GraphCursorLayer" IsHitTestVisible="False">
-                  <Grid x:Name="GraphShipCursor" Width="24" Height="40" Visibility="Collapsed" RenderTransformOrigin="0.5,0.3">
-                    <Grid.RenderTransform>
-                      <RotateTransform x:Name="GraphShipRotation" />
-                    </Grid.RenderTransform>
-                    <Path x:Name="GraphShipFlame" Data="M 8,20 L 12,39 L 16,20 Z" Fill="#CCFFFFFF" Opacity="0" RenderTransformOrigin="0.5,0">
-                      <Path.RenderTransform>
-                        <ScaleTransform x:Name="GraphShipFlameScale" ScaleY="0.25" />
-                      </Path.RenderTransform>
-                    </Path>
-                    <Path Data="M 12,1 L 20,23 L 12,19 L 4,23 Z" Fill="#FAFAFA" Stroke="#FFFFFFFF" StrokeThickness="0.7" />
-                    <Ellipse Width="4" Height="4" Fill="#151515" HorizontalAlignment="Center" VerticalAlignment="Top" Margin="0,9,0,0" />
-                  </Grid>
-                </Canvas>
-              </Grid>
+              <ScrollViewer x:Name="GraphScroll" HorizontalScrollBarVisibility="Hidden" VerticalScrollBarVisibility="Hidden" HorizontalContentAlignment="Center" VerticalContentAlignment="Center" ZoomMode="Disabled" SizeChanged="GraphScroll_SizeChanged">
+                <local:DirectionalCursorCanvas x:Name="GraphCanvas" Width="720" Height="1200" Background="#151515" DoubleTapped="GraphCanvas_DoubleTapped" PointerEntered="GraphCanvas_PointerEntered" PointerExited="GraphCanvas_PointerExited" PointerPressed="GraphCanvas_PointerPressed" PointerMoved="GraphCanvas_PointerMoved" PointerReleased="GraphCanvas_PointerReleased" PointerCanceled="GraphCanvas_PointerReleased" PointerCaptureLost="GraphCanvas_PointerReleased" />
+              </ScrollViewer>
             </Border>
           </Grid>
           <Expander Grid.Row="6" Header="ChatGPT 대화 가져오기" IsExpanded="True" FontSize="{Binding Small, Source={StaticResource Typography}}" HorizontalAlignment="Stretch" HorizontalContentAlignment="Stretch">

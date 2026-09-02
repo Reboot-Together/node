@@ -1,0 +1,16 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <AssemblyName>Asterism.CursorResources</AssemblyName>
+    <RootNamespace>Asterism.CursorResources</RootNamespace>
+    <CursorResourceFile>$(BaseIntermediateOutputPath)$(Configuration)\$(TargetFramework)\Asterism.Cursors.res</CursorResourceFile>
+    <Win32Resource>$(CursorResourceFile)</Win32Resource>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Windows.SDK.BuildTools" Version="10.0.26100.4654" PrivateAssets="all" />
+  </ItemGroup>
+  <Target Name="CompileCursorResources" BeforeTargets="CoreCompile">
+    <MakeDir Directories="$([System.IO.Path]::GetDirectoryName('$(CursorResourceFile)'))" />
+    <Exec Command="&quot;$(RcExeFullPath)&quot; /nologo /fo &quot;$(CursorResourceFile)&quot; &quot;$(MSBuildProjectDirectory)\Asterism.Cursors.rc&quot;" />
+  </Target>
+</Project>
