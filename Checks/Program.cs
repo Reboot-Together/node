@@ -205,15 +205,14 @@ try
         || GraphViewportService.NodeRadius(1, true, 20) > 5
         || GraphViewportService.NodeRadius(GraphViewportService.MinimumZoom, false, 1) >= .8)
         throw new Exception("그래프 노드 크기 단계 계산 실패");
-    if (GraphViewportService.QuantizeCursorDirection(new GraphPoint(0, 0), new GraphPoint(10, 0)) != GraphCursorDirection.East
-        || GraphViewportService.QuantizeCursorDirection(new GraphPoint(0, 10), new GraphPoint(10, 0)) != GraphCursorDirection.NorthEast
-        || GraphViewportService.QuantizeCursorDirection(new GraphPoint(0, 10), new GraphPoint(0, 0)) != GraphCursorDirection.North
-        || GraphViewportService.QuantizeCursorDirection(new GraphPoint(10, 10), new GraphPoint(0, 0)) != GraphCursorDirection.NorthWest
-        || GraphViewportService.QuantizeCursorDirection(new GraphPoint(10, 0), new GraphPoint(0, 0)) != GraphCursorDirection.West
-        || GraphViewportService.QuantizeCursorDirection(new GraphPoint(10, 0), new GraphPoint(0, 10)) != GraphCursorDirection.SouthWest
-        || GraphViewportService.QuantizeCursorDirection(new GraphPoint(0, 0), new GraphPoint(0, 10)) != GraphCursorDirection.South
-        || GraphViewportService.QuantizeCursorDirection(new GraphPoint(0, 0), new GraphPoint(10, 10)) != GraphCursorDirection.SouthEast)
-        throw new Exception("그래프 커서 8방향 양자화 실패");
+    var cursorDirections = Enum.GetValues<GraphCursorDirection>();
+    for (var index = 0; index < cursorDirections.Length; index++)
+    {
+        var angle = index * 22.5 * Math.PI / 180;
+        var current = new GraphPoint(Math.Cos(angle) * 10, -Math.Sin(angle) * 10);
+        if (GraphViewportService.QuantizeCursorDirection(new GraphPoint(0, 0), current) != cursorDirections[index])
+            throw new Exception($"그래프 커서 16방향 양자화 실패: {cursorDirections[index]}");
+    }
     var labelPlacements = new GraphLabelLayoutService().Arrange(
     [
         new GraphLabelCandidate("현재", new GraphPoint(100, 100), 6, 11, 100, 0, GraphLabelRole.Focus),
@@ -355,14 +354,20 @@ Recall = TP / (TP + FN)
         Path.Combine(expansionRoot, "A", "A1"),
         Path.Combine(expansionRoot, "A", "A2")
     };
+    var explorerFolders = expansionFolders.Append(BuiltInGuideService.FolderPath).ToArray();
     var expandedFolders = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-    folderExpansionService.InitializeDefaults(expansionRoot, expansionFolders, expandedFolders);
+    folderExpansionService.InitializeDefaults(expansionRoot, explorerFolders, expandedFolders);
     if (expandedFolders.Count(folder => Path.GetDirectoryName(folder)?.Equals(expansionRoot, StringComparison.OrdinalIgnoreCase) == true) != 1)
         throw new Exception("탐색기 형제 폴더 기본 상호 배타 상태 실패");
-    folderExpansionService.ExpandExclusive(expansionRoot, expansionFolders, expandedFolders, expansionFolders[2]);
+    folderExpansionService.ExpandExclusive(expansionRoot, explorerFolders, expandedFolders, BuiltInGuideService.FolderPath);
+    if (!expandedFolders.Contains(BuiltInGuideService.FolderPath) || expandedFolders.Contains(expansionFolders[1]) || expandedFolders.Contains(expansionFolders[2]))
+        throw new Exception("가상 안내 폴더의 최상위 아코디언 참여 실패");
+    folderExpansionService.ExpandExclusive(expansionRoot, explorerFolders, expandedFolders, expansionFolders[2]);
+    if (expandedFolders.Contains(BuiltInGuideService.FolderPath))
+        throw new Exception("실제 폴더 펼침 시 가상 안내 폴더 접기 실패");
     if (!expandedFolders.Contains(expansionFolders[2]) || expandedFolders.Contains(expansionFolders[1]))
         throw new Exception("탐색기 같은 수준 폴더 상호 배타 펼침 실패");
-    folderExpansionService.ExpandExclusive(expansionRoot, expansionFolders, expandedFolders, expansionFolders[4]);
+    folderExpansionService.ExpandExclusive(expansionRoot, explorerFolders, expandedFolders, expansionFolders[4]);
     if (!expandedFolders.Contains(expansionFolders[4]) || expandedFolders.Contains(expansionFolders[3]))
         throw new Exception("탐색기 하위 폴더 독립 그룹 처리 실패");
 

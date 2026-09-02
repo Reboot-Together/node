@@ -13,7 +13,7 @@ public sealed class FolderExpansionService
         foreach (var group in folders
             .Select(Normalize)
             .Where(folder => !folder.Equals(root, StringComparison.OrdinalIgnoreCase))
-            .GroupBy(folder => Path.GetDirectoryName(folder)!, StringComparer.OrdinalIgnoreCase))
+            .GroupBy(folder => ParentOf(root, folder), StringComparer.OrdinalIgnoreCase))
         {
             var first = group.OrderBy(Path.GetFileName, StringComparer.CurrentCultureIgnoreCase).First();
             expandedFolders.Add(first);
@@ -34,11 +34,11 @@ public sealed class FolderExpansionService
             return;
         }
 
-        var parent = Path.GetDirectoryName(folder);
+        var parent = ParentOf(root, folder);
         foreach (var sibling in folders
             .Select(Normalize)
             .Where(candidate => !candidate.Equals(folder, StringComparison.OrdinalIgnoreCase)
-                && Path.GetDirectoryName(candidate)?.Equals(parent, StringComparison.OrdinalIgnoreCase) == true))
+                && ParentOf(root, candidate).Equals(parent, StringComparison.OrdinalIgnoreCase)))
             expandedFolders.Remove(sibling);
 
         expandedFolders.Add(folder);
@@ -55,6 +55,14 @@ public sealed class FolderExpansionService
         else ExpandExclusive(rootPath, folders, expandedFolders, folder);
     }
 
-    private static string Normalize(string path) =>
-        Path.TrimEndingDirectorySeparator(Path.GetFullPath(path));
+    private static string Normalize(string path) => IsVirtual(path)
+        ? path.TrimEnd('/')
+        : Path.TrimEndingDirectorySeparator(Path.GetFullPath(path));
+
+    private static string ParentOf(string root, string folder) => IsVirtual(folder)
+        ? root
+        : Path.GetDirectoryName(folder)!;
+
+    private static bool IsVirtual(string path) =>
+        Uri.TryCreate(path, UriKind.Absolute, out var uri) && !uri.IsFile;
 }

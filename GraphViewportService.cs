@@ -10,13 +10,21 @@ public enum GraphLabelMode
 public enum GraphCursorDirection
 {
     East,
+    EastNorthEast,
     NorthEast,
+    NorthNorthEast,
     North,
+    NorthNorthWest,
     NorthWest,
+    WestNorthWest,
     West,
+    WestSouthWest,
     SouthWest,
+    SouthSouthWest,
     South,
-    SouthEast
+    SouthSouthEast,
+    SouthEast,
+    EastSouthEast
 }
 
 public static class GraphViewportService
@@ -60,6 +68,6 @@ public static class GraphViewportService
         var dx = current.X - previous.X;
         var dy = current.Y - previous.Y;
         var angle = (Math.Atan2(-dy, dx) * 180 / Math.PI + 360) % 360;
-        return (GraphCursorDirection)((int)Math.Round(angle / 45, MidpointRounding.AwayFromZero) % 8);
+        return (GraphCursorDirection)((int)Math.Round(angle / 22.5, MidpointRounding.AwayFromZero) % 16);
     }
 }

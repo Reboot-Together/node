@@ -4,14 +4,22 @@ Add-Type -AssemblyName System.Drawing
 New-Item -ItemType Directory -Force -Path $OutputDirectory | Out-Null
 
 $directions = [ordered]@{
-    e  = 0
-    ne = 45
-    n  = 90
-    nw = 135
-    w  = 180
-    sw = 225
-    s  = 270
-    se = 315
+    e   = 0
+    ene = 22.5
+    ne  = 45
+    nne = 67.5
+    n   = 90
+    nnw = 112.5
+    nw  = 135
+    wnw = 157.5
+    w   = 180
+    wsw = 202.5
+    sw  = 225
+    ssw = 247.5
+    s   = 270
+    sse = 292.5
+    se  = 315
+    ese = 337.5
 }
 
 foreach ($entry in $directions.GetEnumerator()) {
@@ -25,40 +33,37 @@ foreach ($entry in $directions.GetEnumerator()) {
 
     $flameBrush = New-Object System.Drawing.SolidBrush ([System.Drawing.Color]::FromArgb(220, 205, 232, 255))
     $graphics.FillPolygon($flameBrush, [System.Drawing.PointF[]]@(
-        [System.Drawing.PointF]::new(10, 27), [System.Drawing.PointF]::new(0, 29.5), [System.Drawing.PointF]::new(10, 31)
-    ))
-    $graphics.FillPolygon($flameBrush, [System.Drawing.PointF[]]@(
-        [System.Drawing.PointF]::new(10, 33), [System.Drawing.PointF]::new(0, 34.5), [System.Drawing.PointF]::new(10, 37)
+        [System.Drawing.PointF]::new(11, 29), [System.Drawing.PointF]::new(0, 32), [System.Drawing.PointF]::new(11, 35)
     ))
 
     $ship = New-Object System.Drawing.Drawing2D.GraphicsPath
     $ship.AddPolygon([System.Drawing.PointF[]]@(
-        [System.Drawing.PointF]::new(59, 32),
-        [System.Drawing.PointF]::new(40, 20),
-        [System.Drawing.PointF]::new(31, 7),
-        [System.Drawing.PointF]::new(24, 9),
-        [System.Drawing.PointF]::new(26, 25),
-        [System.Drawing.PointF]::new(12, 25),
-        [System.Drawing.PointF]::new(7, 29),
-        [System.Drawing.PointF]::new(7, 35),
-        [System.Drawing.PointF]::new(12, 39),
-        [System.Drawing.PointF]::new(26, 39),
-        [System.Drawing.PointF]::new(24, 55),
-        [System.Drawing.PointF]::new(31, 57),
-        [System.Drawing.PointF]::new(40, 44)
+        [System.Drawing.PointF]::new(61, 32),
+        [System.Drawing.PointF]::new(43, 27),
+        [System.Drawing.PointF]::new(32, 20),
+        [System.Drawing.PointF]::new(28, 21),
+        [System.Drawing.PointF]::new(30, 29),
+        [System.Drawing.PointF]::new(12, 29),
+        [System.Drawing.PointF]::new(7, 31),
+        [System.Drawing.PointF]::new(7, 33),
+        [System.Drawing.PointF]::new(12, 35),
+        [System.Drawing.PointF]::new(30, 35),
+        [System.Drawing.PointF]::new(28, 43),
+        [System.Drawing.PointF]::new(32, 44),
+        [System.Drawing.PointF]::new(43, 37)
     ))
-    $outline = New-Object System.Drawing.Pen ([System.Drawing.Color]::FromArgb(225, 20, 23, 28)), 4
+    $outline = New-Object System.Drawing.Pen ([System.Drawing.Color]::FromArgb(225, 20, 23, 28)), 3
     $outline.LineJoin = [System.Drawing.Drawing2D.LineJoin]::Round
     $body = New-Object System.Drawing.SolidBrush ([System.Drawing.Color]::FromArgb(255, 248, 249, 250))
     $graphics.FillPath($body, $ship)
     $graphics.DrawPath($outline, $ship)
 
     $detailPen = New-Object System.Drawing.Pen ([System.Drawing.Color]::FromArgb(160, 95, 105, 118)), 1.7
-    $graphics.DrawLine($detailPen, 18, 32, 54, 32)
+    $graphics.DrawLine($detailPen, 18, 32, 56, 32)
     $cockpit = New-Object System.Drawing.SolidBrush ([System.Drawing.Color]::FromArgb(255, 38, 47, 58))
-    $graphics.FillEllipse($cockpit, 36, 27, 11, 10)
+    $graphics.FillEllipse($cockpit, 39, 29, 9, 6)
     $glass = New-Object System.Drawing.SolidBrush ([System.Drawing.Color]::FromArgb(210, 186, 219, 240))
-    $graphics.FillEllipse($glass, 38, 28, 6, 4)
+    $graphics.FillEllipse($glass, 41, 30, 5, 2.5)
 
     $small = New-Object System.Drawing.Bitmap 32, 32, ([System.Drawing.Imaging.PixelFormat]::Format32bppArgb)
     $downsample = [System.Drawing.Graphics]::FromImage($small)

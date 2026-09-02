@@ -57,7 +57,7 @@ jobs:
             -p:DebugType=None -p:DebugSymbols=false `
             --output $publishDir
 
-          foreach ($required in @('App.xbf', 'MainWindow.xbf', 'Asterism.pri')) {
+          foreach ($required in @('App.xbf', 'MainWindow.xbf', 'Asterism.pri', 'Asterism.CursorResources.dll')) {
             if (-not (Test-Path -LiteralPath (Join-Path $publishDir $required))) {
               throw "Required WinUI resource is missing from publish output: $required"
             }

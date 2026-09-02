@@ -28,6 +28,7 @@ public sealed partial class MainWindow : Window
     private readonly DispatcherQueueTimer _previewTimer;
     private List<NoteInfo> _notes = [];
     private IReadOnlyList<string> _folders = [];
+    private IReadOnlyList<string> ExplorerFolders => [.. _folders, BuiltInGuideService.FolderPath];
     private IReadOnlyList<VaultItem> _vaultItems = [];
     private IReadOnlyDictionary<string, List<string>> _noteLinks = new Dictionary<string, List<string>>(StringComparer.OrdinalIgnoreCase);
     private readonly HashSet<string> _expandedFolders = new(StringComparer.OrdinalIgnoreCase);
@@ -93,8 +94,12 @@ public sealed partial class MainWindow : Window
         _folders = _vaultTreeService.LoadFolders(_workspace.RootPath);
         if (!_folderExpansionInitialized)
         {
-            _folderExpansionService.InitializeDefaults(_workspace.RootPath, _folders, _expandedFolders);
-            _expandedFolders.Add(BuiltInGuideService.FolderPath);
+            _folderExpansionService.InitializeDefaults(_workspace.RootPath, ExplorerFolders, _expandedFolders);
+            _folderExpansionService.ExpandExclusive(
+                _workspace.RootPath,
+                ExplorerFolders,
+                _expandedFolders,
+                BuiltInGuideService.FolderPath);
             _folderExpansionInitialized = true;
         }
         RefreshLinkIndex();
@@ -158,12 +163,20 @@ public sealed partial class MainWindow : Window
             treeChanged = true;
         }
         if (note.IsReadOnly)
-            treeChanged |= _expandedFolders.Add(BuiltInGuideService.FolderPath);
+        {
+            var before = _expandedFolders.ToHashSet(StringComparer.OrdinalIgnoreCase);
+            _folderExpansionService.ExpandExclusive(
+                _workspace.RootPath,
+                ExplorerFolders,
+                _expandedFolders,
+                BuiltInGuideService.FolderPath);
+            treeChanged |= !before.SetEquals(_expandedFolders);
+        }
         else
             foreach (var folder in _vaultTreeService.AncestorFolders(_workspace.RootPath, note.Path).Reverse())
             {
                 var before = _expandedFolders.ToHashSet(StringComparer.OrdinalIgnoreCase);
-                _folderExpansionService.ExpandExclusive(_workspace.RootPath, _folders, _expandedFolders, folder);
+                _folderExpansionService.ExpandExclusive(_workspace.RootPath, ExplorerFolders, _expandedFolders, folder);
                 treeChanged |= !before.SetEquals(_expandedFolders);
             }
 

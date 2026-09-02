@@ -16,18 +16,11 @@ public sealed partial class MainWindow
         var item = FindVaultItem(path);
         if (item is not { IsFolder: true, IsRoot: false }) return;
 
-        if (item.IsVirtual)
-        {
-            if (!_expandedFolders.Add(item.Path)) _expandedFolders.Remove(item.Path);
-        }
-        else
-        {
-            _folderExpansionService.ToggleExclusive(
-                _workspace.RootPath,
-                _folders,
-                _expandedFolders,
-                item.Path);
-        }
+        _folderExpansionService.ToggleExclusive(
+            _workspace.RootPath,
+            ExplorerFolders,
+            _expandedFolders,
+            item.Path);
         ApplySearch();
         e.Handled = true;
     }
@@ -175,10 +168,11 @@ public sealed partial class MainWindow
 
     private void ExpandFolder(string folder)
     {
-        if (folder.Equals(BuiltInGuideService.FolderPath, StringComparison.OrdinalIgnoreCase))
-            _expandedFolders.Add(folder);
-        else
-            _folderExpansionService.ExpandExclusive(_workspace.RootPath, _folders, _expandedFolders, folder);
+        _folderExpansionService.ExpandExclusive(
+            _workspace.RootPath,
+            ExplorerFolders,
+            _expandedFolders,
+            folder);
     }
 
     private static MenuFlyoutItem MenuItem(string text, RoutedEventHandler handler)
