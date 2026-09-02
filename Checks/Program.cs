@@ -205,6 +205,14 @@ try
         || GraphViewportService.NodeRadius(1, true, 20) > 5
         || GraphViewportService.NodeRadius(GraphViewportService.MinimumZoom, false, 1) >= .8)
         throw new Exception("그래프 노드 크기 단계 계산 실패");
+    var cursorRight = GraphViewportService.CalculateCursorMotion(new GraphPoint(0, 0), new GraphPoint(100, 0), .1);
+    var cursorUp = GraphViewportService.CalculateCursorMotion(new GraphPoint(0, 100), new GraphPoint(0, 0), .1);
+    var cursorSlow = GraphViewportService.CalculateCursorMotion(new GraphPoint(0, 0), new GraphPoint(1, 0), 1);
+    if (Math.Abs(cursorRight.Angle - 90) > .001
+        || Math.Abs(cursorUp.Angle) > .001
+        || cursorRight.FlameStrength < .99
+        || cursorSlow.FlameStrength != 0)
+        throw new Exception("그래프 우주선 커서 방향과 속도 계산 실패");
     var labelPlacements = new GraphLabelLayoutService().Arrange(
     [
         new GraphLabelCandidate("현재", new GraphPoint(100, 100), 6, 11, 100, 0, GraphLabelRole.Focus),

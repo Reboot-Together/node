@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.Numerics;
 using Microsoft.UI.Composition;
 using Microsoft.UI;
@@ -28,6 +29,13 @@ public sealed partial class MainWindow
     private double _graphVerticalStart;
     private int _graphViewportRevision;
     private readonly List<Visual> _graphTwinkleVisuals = [];
+    private GraphPoint? _graphCursorLastPoint;
+    private long _graphCursorLastTimestamp;
+    private double _graphCursorFlameStrength;
+    private int _graphCursorHideCalls;
+
+    [System.Runtime.InteropServices.DllImport("user32.dll")]
+    private static extern int ShowCursor([System.Runtime.InteropServices.MarshalAs(System.Runtime.InteropServices.UnmanagedType.Bool)] bool show);
 
     private void GraphZoomIn_Click(object sender, RoutedEventArgs e)
     {
@@ -203,8 +211,22 @@ public sealed partial class MainWindow
         GraphCanvas.CapturePointer(e.Pointer);
     }
 
+    private void GraphCanvas_PointerEntered(object sender, PointerRoutedEventArgs e)
+    {
+        if (e.Pointer.PointerDeviceType != Microsoft.UI.Input.PointerDeviceType.Mouse) return;
+        ShowGraphShipCursor(e);
+    }
+
+    private void GraphCanvas_PointerExited(object sender, PointerRoutedEventArgs e)
+    {
+        if (e.Pointer.PointerDeviceType == Microsoft.UI.Input.PointerDeviceType.Mouse)
+            HideGraphShipCursor();
+    }
+
     private void GraphCanvas_PointerMoved(object sender, PointerRoutedEventArgs e)
     {
+        if (e.Pointer.PointerDeviceType == Microsoft.UI.Input.PointerDeviceType.Mouse)
+            UpdateGraphShipCursor(e);
         if (!_graphPanning || e.Pointer.PointerId != _graphPointerId) return;
 
         var point = e.GetCurrentPoint(GraphScroll).Position;
@@ -214,6 +236,78 @@ public sealed partial class MainWindow
             null,
             true);
         e.Handled = true;
+    }
+
+    private void ShowGraphShipCursor(PointerRoutedEventArgs e)
+    {
+        GraphShipCursor.Visibility = Visibility.Visible;
+        HideSystemCursor();
+        var position = e.GetCurrentPoint(GraphCursorLayer).Position;
+        _graphCursorLastPoint = new GraphPoint(position.X, position.Y);
+        _graphCursorLastTimestamp = Stopwatch.GetTimestamp();
+        PositionGraphShip(position.X, position.Y);
+    }
+
+    private void UpdateGraphShipCursor(PointerRoutedEventArgs e)
+    {
+        if (GraphShipCursor.Visibility != Visibility.Visible) ShowGraphShipCursor(e);
+
+        var position = e.GetCurrentPoint(GraphCursorLayer).Position;
+        PositionGraphShip(position.X, position.Y);
+        var now = Stopwatch.GetTimestamp();
+        var current = new GraphPoint(position.X, position.Y);
+        if (_graphCursorLastPoint is { } previous)
+        {
+            var elapsed = (now - _graphCursorLastTimestamp) / (double)Stopwatch.Frequency;
+            var motion = GraphViewportService.CalculateCursorMotion(previous, current, elapsed);
+            if (Math.Abs(current.X - previous.X) + Math.Abs(current.Y - previous.Y) >= .25)
+                GraphShipRotation.Angle = motion.Angle;
+            _graphCursorFlameStrength = _graphCursorFlameStrength * .55 + motion.FlameStrength * .45;
+            AnimateGraphShipFlame(_graphCursorFlameStrength);
+        }
+        _graphCursorLastPoint = current;
+        _graphCursorLastTimestamp = now;
+    }
+
+    private void PositionGraphShip(double x, double y)
+    {
+        Canvas.SetLeft(GraphShipCursor, x - GraphShipCursor.Width / 2);
+        Canvas.SetTop(GraphShipCursor, y - 12);
+    }
+
+    private void AnimateGraphShipFlame(double strength)
+    {
+        GraphShipFlameScale.ScaleY = .25 + strength * 1.25;
+        var visual = ElementCompositionPreview.GetElementVisual(GraphShipFlame);
+        var animation = visual.Compositor.CreateScalarKeyFrameAnimation();
+        animation.InsertKeyFrame(0, (float)(.12 + strength * .88));
+        animation.InsertKeyFrame(1, 0);
+        animation.Duration = TimeSpan.FromMilliseconds(220);
+        visual.StartAnimation("Opacity", animation);
+    }
+
+    private void HideGraphShipCursor()
+    {
+        if (GraphShipCursor is not null) GraphShipCursor.Visibility = Visibility.Collapsed;
+        _graphCursorLastPoint = null;
+        _graphCursorFlameStrength = 0;
+        RestoreSystemCursor();
+    }
+
+    private void HideSystemCursor()
+    {
+        if (_graphCursorHideCalls > 0) return;
+        do { _graphCursorHideCalls++; }
+        while (ShowCursor(false) >= 0 && _graphCursorHideCalls < 16);
+    }
+
+    private void RestoreSystemCursor()
+    {
+        while (_graphCursorHideCalls > 0)
+        {
+            ShowCursor(true);
+            _graphCursorHideCalls--;
+        }
     }
 
     private void GraphCanvas_PointerReleased(object sender, PointerRoutedEventArgs e)

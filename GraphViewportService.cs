@@ -7,6 +7,8 @@ public enum GraphLabelMode
     Detail
 }
 
+public readonly record struct GraphCursorMotion(double Angle, double FlameStrength);
+
 public static class GraphViewportService
 {
     public const double MinimumZoom = .18;
@@ -41,5 +43,15 @@ public static class GraphViewportService
         var baseRadius = selected ? 3.5 : 1.75;
         var degreeRadius = Math.Min(selected ? 1.25 : 1, Math.Max(0, degree) * .15);
         return (baseRadius + degreeRadius) * VisualScale(zoom);
+    }
+
+    public static GraphCursorMotion CalculateCursorMotion(GraphPoint previous, GraphPoint current, double elapsedSeconds)
+    {
+        var dx = current.X - previous.X;
+        var dy = current.Y - previous.Y;
+        var distance = Math.Sqrt(dx * dx + dy * dy);
+        var angle = distance < .25 ? 0 : Math.Atan2(dy, dx) * 180 / Math.PI + 90;
+        var speed = distance / Math.Max(.008, elapsedSeconds);
+        return new GraphCursorMotion(angle, Math.Clamp((speed - 35) / 900, 0, 1));
     }
 }

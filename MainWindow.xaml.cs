@@ -72,8 +72,14 @@ public sealed partial class MainWindow : Window
         MarkdownPreview.Loaded += MarkdownPreview_Loaded;
         RefreshNotes();
         if (_notes.Count == 0) NewNote(); else Select(_notes[0]);
+        Activated += (_, args) =>
+        {
+            if (args.WindowActivationState == WindowActivationState.Deactivated)
+                HideGraphShipCursor();
+        };
         Closed += (_, _) =>
         {
+            HideGraphShipCursor();
             SaveSideDocuments();
             SaveCurrent();
             _uiLayoutSettingsService.Save(_uiLayoutSettings);
