@@ -22,48 +22,48 @@ $directions = [ordered]@{
     ese = 337.5
 }
 
+$referencePath = Join-Path $PSScriptRoot 'assets\ship-reference.jpg'
+$reference = [System.Drawing.Bitmap]::FromFile($referencePath)
+$minX = $reference.Width
+$minY = $reference.Height
+$maxX = 0
+$maxY = 0
+for ($y = 0; $y -lt $reference.Height; $y++) {
+    for ($x = 0; $x -lt $reference.Width; $x++) {
+        $pixel = $reference.GetPixel($x, $y)
+        $luminance = ($pixel.R + $pixel.G + $pixel.B) / 3
+        if ($luminance -lt 210) {
+            $minX = [Math]::Min($minX, $x)
+            $minY = [Math]::Min($minY, $y)
+            $maxX = [Math]::Max($maxX, $x)
+            $maxY = [Math]::Max($maxY, $y)
+        }
+    }
+}
+
+$sourceWidth = $maxX - $minX + 1
+$sourceHeight = $maxY - $minY + 1
+$source = New-Object System.Drawing.Bitmap $sourceWidth, $sourceHeight, ([System.Drawing.Imaging.PixelFormat]::Format32bppArgb)
+for ($y = 0; $y -lt $sourceHeight; $y++) {
+    for ($x = 0; $x -lt $sourceWidth; $x++) {
+        $pixel = $reference.GetPixel($minX + $x, $minY + $y)
+        $luminance = ($pixel.R + $pixel.G + $pixel.B) / 3
+        $alpha = [Math]::Clamp([int]((242 - $luminance) * 1.7), 0, 255)
+        $source.SetPixel($x, $y, [System.Drawing.Color]::FromArgb($alpha, 240, 242, 244))
+    }
+}
+
 foreach ($entry in $directions.GetEnumerator()) {
     $large = New-Object System.Drawing.Bitmap 64, 64, ([System.Drawing.Imaging.PixelFormat]::Format32bppArgb)
     $graphics = [System.Drawing.Graphics]::FromImage($large)
     $graphics.SmoothingMode = [System.Drawing.Drawing2D.SmoothingMode]::AntiAlias
     $graphics.PixelOffsetMode = [System.Drawing.Drawing2D.PixelOffsetMode]::HighQuality
+    $graphics.InterpolationMode = [System.Drawing.Drawing2D.InterpolationMode]::HighQualityBicubic
     $graphics.TranslateTransform(32, 32)
-    $graphics.RotateTransform(-[single]$entry.Value)
-    $graphics.TranslateTransform(-32, -32)
-
-    $flameBrush = New-Object System.Drawing.SolidBrush ([System.Drawing.Color]::FromArgb(220, 205, 232, 255))
-    $graphics.FillPolygon($flameBrush, [System.Drawing.PointF[]]@(
-        [System.Drawing.PointF]::new(11, 29), [System.Drawing.PointF]::new(0, 32), [System.Drawing.PointF]::new(11, 35)
-    ))
-
-    $ship = New-Object System.Drawing.Drawing2D.GraphicsPath
-    $ship.AddPolygon([System.Drawing.PointF[]]@(
-        [System.Drawing.PointF]::new(61, 32),
-        [System.Drawing.PointF]::new(43, 27),
-        [System.Drawing.PointF]::new(32, 20),
-        [System.Drawing.PointF]::new(28, 21),
-        [System.Drawing.PointF]::new(30, 29),
-        [System.Drawing.PointF]::new(12, 29),
-        [System.Drawing.PointF]::new(7, 31),
-        [System.Drawing.PointF]::new(7, 33),
-        [System.Drawing.PointF]::new(12, 35),
-        [System.Drawing.PointF]::new(30, 35),
-        [System.Drawing.PointF]::new(28, 43),
-        [System.Drawing.PointF]::new(32, 44),
-        [System.Drawing.PointF]::new(43, 37)
-    ))
-    $outline = New-Object System.Drawing.Pen ([System.Drawing.Color]::FromArgb(225, 20, 23, 28)), 3
-    $outline.LineJoin = [System.Drawing.Drawing2D.LineJoin]::Round
-    $body = New-Object System.Drawing.SolidBrush ([System.Drawing.Color]::FromArgb(255, 248, 249, 250))
-    $graphics.FillPath($body, $ship)
-    $graphics.DrawPath($outline, $ship)
-
-    $detailPen = New-Object System.Drawing.Pen ([System.Drawing.Color]::FromArgb(160, 95, 105, 118)), 1.7
-    $graphics.DrawLine($detailPen, 18, 32, 56, 32)
-    $cockpit = New-Object System.Drawing.SolidBrush ([System.Drawing.Color]::FromArgb(255, 38, 47, 58))
-    $graphics.FillEllipse($cockpit, 39, 29, 9, 6)
-    $glass = New-Object System.Drawing.SolidBrush ([System.Drawing.Color]::FromArgb(210, 186, 219, 240))
-    $graphics.FillEllipse($glass, 41, 30, 5, 2.5)
+    $graphics.RotateTransform([single](128 - $entry.Value))
+    $graphics.ScaleTransform(.29, .29)
+    $graphics.TranslateTransform(-$sourceWidth / 2, -$sourceHeight / 2)
+    $graphics.DrawImageUnscaled($source, 0, 0)
 
     $small = New-Object System.Drawing.Bitmap 32, 32, ([System.Drawing.Imaging.PixelFormat]::Format32bppArgb)
     $downsample = [System.Drawing.Graphics]::FromImage($small)
@@ -116,13 +116,9 @@ foreach ($entry in $directions.GetEnumerator()) {
     $dib.Dispose()
     $downsample.Dispose()
     $small.Dispose()
-    $glass.Dispose()
-    $cockpit.Dispose()
-    $detailPen.Dispose()
-    $body.Dispose()
-    $outline.Dispose()
-    $ship.Dispose()
-    $flameBrush.Dispose()
     $graphics.Dispose()
     $large.Dispose()
 }
+
+$source.Dispose()
+$reference.Dispose()

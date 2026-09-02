@@ -340,11 +340,12 @@ public sealed partial class MainWindow
         for (var index = 0; index < fieldStarCount; index++)
         {
             var radius = index % 17 == 0 ? 1.25 : index % 7 == 0 ? .8 : .45;
+            var alpha = index % 17 == 0 ? (byte)150 : (byte)72;
             var star = new Ellipse
             {
                 Width = radius * 2,
                 Height = radius * 2,
-                Fill = new SolidColorBrush(ColorHelper.FromArgb(index % 17 == 0 ? (byte)150 : (byte)72, 220, 220, 220)),
+                Fill = new SolidColorBrush(FieldStarColor(index, alpha)),
                 IsHitTestVisible = false
             };
             Canvas.SetLeft(star, 24 + (index * 223 % Math.Max(1, (int)width - 48)));
@@ -610,12 +611,31 @@ public sealed partial class MainWindow
         return neighbors;
     }
 
-    private static Windows.UI.Color StarColor(NoteInfo note) =>
-        note.Metadata.Source.Equals("ChatGPT", StringComparison.OrdinalIgnoreCase)
-            ? ColorHelper.FromArgb(255, 205, 205, 205)
-            : note.Metadata.Type.Equals("Daily", StringComparison.OrdinalIgnoreCase)
-                ? ColorHelper.FromArgb(255, 235, 235, 235)
-                : ColorHelper.FromArgb(255, 220, 220, 220);
+    private static Windows.UI.Color StarColor(NoteInfo note) => StablePaletteIndex(note.Title) switch
+    {
+        0 => ColorHelper.FromArgb(255, 220, 223, 228), // cool white
+        1 => ColorHelper.FromArgb(255, 216, 225, 232), // pale blue
+        2 => ColorHelper.FromArgb(255, 229, 223, 213), // soft ivory
+        3 => ColorHelper.FromArgb(255, 217, 227, 221), // pale mint
+        4 => ColorHelper.FromArgb(255, 228, 219, 223), // muted rose
+        _ => ColorHelper.FromArgb(255, 224, 221, 231)  // pale lavender
+    };
+
+    private static Windows.UI.Color FieldStarColor(int index, byte alpha) => (index % 4) switch
+    {
+        0 => ColorHelper.FromArgb(alpha, 216, 222, 229),
+        1 => ColorHelper.FromArgb(alpha, 228, 223, 214),
+        2 => ColorHelper.FromArgb(alpha, 216, 226, 221),
+        _ => ColorHelper.FromArgb(alpha, 224, 220, 229)
+    };
+
+    private static int StablePaletteIndex(string value)
+    {
+        var hash = 17;
+        foreach (var character in value)
+            hash = unchecked(hash * 31 + char.ToUpperInvariant(character));
+        return (hash & int.MaxValue) % 6;
+    }
 
     private Windows.UI.Color GraphAccent(byte alpha, bool bright = false)
     {
