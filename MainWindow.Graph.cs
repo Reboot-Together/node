@@ -12,12 +12,14 @@ namespace AsterismApp;
 
 public sealed partial class MainWindow
 {
-    private const double GraphLogicalWidth = 720;
-    private const double GraphLogicalHeight = 1200;
+    private const double GraphLogicalWidth = 1200;
+    private const double GraphLogicalHeight = 900;
     private readonly GraphLayoutService _graphLayoutService = new();
     private readonly GraphLabelLayoutService _graphLabelLayoutService = new();
     private double _graphZoom = .72;
     private Dictionary<string, GraphPoint> _graphPoints = new(StringComparer.OrdinalIgnoreCase);
+    private readonly Dictionary<string, GraphViewportState> _graphViewportStates =
+        new(StringComparer.OrdinalIgnoreCase);
     private IReadOnlyDictionary<string, int> _graphRelationshipDepths =
         new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
     private GraphLayout? _activeGraphLayout;
@@ -34,6 +36,42 @@ public sealed partial class MainWindow
     private GraphCursorDirection? _graphCursorDirection;
     private Microsoft.UI.Dispatching.DispatcherQueueTimer? _graphCursorIdleTimer;
     private bool _graphCursorMoving;
+
+    private readonly record struct GraphViewportState(
+        double Zoom,
+        double HorizontalOffset,
+        double VerticalOffset);
+
+    private void CaptureCurrentGraphViewport()
+    {
+        if (_selected is null || GraphScroll is null) return;
+        _graphViewportStates[_selected.Path] = new GraphViewportState(
+            _graphZoom,
+            GraphScroll.HorizontalOffset,
+            GraphScroll.VerticalOffset);
+    }
+
+    private bool PrepareGraphViewport(NoteInfo note)
+    {
+        if (_graphViewportStates.TryGetValue(note.Path, out var state))
+        {
+            _graphZoom = state.Zoom;
+            return true;
+        }
+
+        _graphZoom = .72;
+        return false;
+    }
+
+    private void RestoreGraphViewport(NoteInfo note)
+    {
+        if (!_graphViewportStates.TryGetValue(note.Path, out var state)) return;
+        DispatcherQueue.TryEnqueue(() =>
+        {
+            if (_selected?.Path.Equals(note.Path, StringComparison.OrdinalIgnoreCase) == true)
+                GraphScroll.ChangeView(state.HorizontalOffset, state.VerticalOffset, null, true);
+        });
+    }
 
     private void GraphZoomIn_Click(object sender, RoutedEventArgs e)
     {
@@ -443,7 +481,7 @@ public sealed partial class MainWindow
         Canvas.SetLeft(hitTarget, point.X - hitRadius);
         Canvas.SetTop(hitTarget, point.Y - hitRadius);
         Canvas.SetZIndex(hitTarget, 5);
-        ToolTipService.SetToolTip(hitTarget, note.Title);
+        if (CanShowGraphLabel(note.Title)) ToolTipService.SetToolTip(hitTarget, note.Title);
         hitTarget.Tapped += (_, _) => Select(note);
         hitTarget.PointerEntered += (_, _) => SetHoveredGraphNode(note.Title);
         hitTarget.PointerExited += (_, _) => ClearHoveredGraphNode(note.Title);

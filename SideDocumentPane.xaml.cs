@@ -63,8 +63,10 @@ public sealed partial class SideDocumentPane : UserControl
     }
 
     public event EventHandler? CloseRequested;
+    public event EventHandler? WorkspaceModeToggleRequested;
 
     public string NotePath => _note.Path;
+    public NoteInfo CurrentNote => _note;
 
     public void FocusEditor()
     {
@@ -209,7 +211,12 @@ public sealed partial class SideDocumentPane : UserControl
             using var message = JsonDocument.Parse(args.WebMessageAsJson);
             var root = message.RootElement;
             if (!root.TryGetProperty("type", out var type)) return;
-            if (type.GetString() == "fold-state"
+            var messageType = type.GetString();
+            if (messageType == "workspace-mode-toggle")
+            {
+                WorkspaceModeToggleRequested?.Invoke(this, EventArgs.Empty);
+            }
+            else if (messageType == "fold-state"
                 && root.TryGetProperty("key", out var keyElement)
                 && root.TryGetProperty("open", out var openElement)
                 && keyElement.GetString() is { Length: > 0 } key
@@ -217,7 +224,7 @@ public sealed partial class SideDocumentPane : UserControl
             {
                 _foldStates[key] = openElement.GetBoolean();
             }
-            else if (type.GetString() == "preview-scroll"
+            else if (messageType == "preview-scroll"
                 && root.TryGetProperty("y", out var yElement)
                 && yElement.TryGetDouble(out var scrollY)
                 && double.IsFinite(scrollY))
@@ -228,7 +235,7 @@ public sealed partial class SideDocumentPane : UserControl
                     && maximum > 0)
                     SyncEditorScroll(_previewScrollY / maximum);
             }
-            else if (type.GetString() == "focus-editor")
+            else if (messageType == "focus-editor")
             {
                 if (_note.IsReadOnly) return;
                 var offset = root.TryGetProperty("offset", out var offsetElement)

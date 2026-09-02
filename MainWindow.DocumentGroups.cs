@@ -44,6 +44,7 @@ public sealed partial class MainWindow
             CurrentAccent.CssColor,
             CurrentSurface.Key);
         pane.CloseRequested += SideDocument_CloseRequested;
+        pane.WorkspaceModeToggleRequested += SideDocument_WorkspaceModeToggleRequested;
         _sideDocumentPanes.Add(pane);
         DocumentGroupsHost.Children.Add(pane);
         RebuildDocumentGroupColumns();
@@ -54,9 +55,21 @@ public sealed partial class MainWindow
     {
         if (sender is not SideDocumentPane pane) return;
         pane.CloseRequested -= SideDocument_CloseRequested;
+        pane.WorkspaceModeToggleRequested -= SideDocument_WorkspaceModeToggleRequested;
         _sideDocumentPanes.Remove(pane);
         DocumentGroupsHost.Children.Remove(pane);
         RebuildDocumentGroupColumns();
+    }
+
+    private void SideDocument_WorkspaceModeToggleRequested(object? sender, EventArgs e)
+    {
+        if (sender is SideDocumentPane pane)
+        {
+            pane.SaveNow();
+            if (_selected?.Path.Equals(pane.NotePath, StringComparison.OrdinalIgnoreCase) != true)
+                Select(pane.CurrentNote);
+        }
+        ShowConstellationMode();
     }
 
     private void RebuildDocumentGroupColumns()

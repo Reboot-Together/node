@@ -272,7 +272,7 @@ try
 
 - [x] 완료
 """, root);
-    if (!rendered.Contains("<mark>") || !rendered.Contains("internal-link") || !rendered.Contains("<table") || !rendered.Contains("class=\"callout\"") || !rendered.Contains("md-section") || !rendered.Contains("모두 접기") || rendered.Contains("숨김")) throw new Exception("Markdown 미리보기 렌더링 실패");
+    if (!rendered.Contains("<mark>") || !rendered.Contains("internal-link") || !rendered.Contains("<table") || !rendered.Contains("class=\"callout\"") || !rendered.Contains("md-section") || !rendered.Contains("모두 접기") || !rendered.Contains("workspace-mode-toggle") || rendered.Contains("숨김")) throw new Exception("Markdown 미리보기 렌더링 실패");
     var highlightedCode = MarkdownPreviewRenderer.Render("""
     ```python
     def greet(name):

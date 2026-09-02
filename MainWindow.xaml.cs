@@ -58,7 +58,6 @@ public sealed partial class MainWindow : Window
         ApplyAppearanceSettings(refreshContent: false);
         ApplyDocumentSplit(_uiLayoutSettings.PreviewRatio);
         ApplyExplorerState(_uiLayoutSettings.ExplorerCollapsed);
-        ApplyInspectorWidth(_uiLayoutSettings.InspectorWidth);
         var iconPath = Path.Combine(AppContext.BaseDirectory, "Assets", "Asterism.ico");
         if (File.Exists(iconPath)) AppWindow.SetIcon(iconPath);
         AppWindow.Resize(new SizeInt32(1440, 920));
@@ -149,18 +148,22 @@ public sealed partial class MainWindow : Window
 
     private void Select(NoteInfo note, bool focusEditor = false)
     {
+        CaptureCurrentGraphViewport();
         _previewHoverSelectionActive = false;
         _previewHoverSelectionRevision++;
         _loading = true;
         _selected = note;
         TitleBox.Text = note.Title;
+        ConstellationTitleText.Text = note.Title;
         Editor.Text = note.Body;
         RevealNoteInTree(note);
         _loading = false;
         ShowEditorAndPreview();
         UpdateBacklinks();
         UpdateSemanticSuggestions();
-        DrawGraph();
+        var restoreGraphViewport = PrepareGraphViewport(note);
+        DrawGraph(centerCurrentNode: !restoreGraphViewport);
+        if (restoreGraphViewport) RestoreGraphViewport(note);
         if (focusEditor) DispatcherQueue.TryEnqueue(() => Editor.Focus(FocusState.Programmatic));
     }
 
@@ -450,50 +453,6 @@ public sealed partial class MainWindow : Window
         DocumentPanel.Padding = collapsed ? new Thickness(42, 18, 28, 12) : new Thickness(28, 18, 28, 12);
     }
 
-    private void InspectorCollapse_Click(object sender, RoutedEventArgs e)
-    {
-        InspectorDivider.Visibility = Visibility.Collapsed;
-        InspectorDividerColumn.Width = new GridLength(0);
-        InspectorPanel.Visibility = Visibility.Collapsed;
-        InspectorColumn.Width = new GridLength(0);
-        InspectorOpenButton.Visibility = Visibility.Visible;
-    }
-
-    private void InspectorOpen_Click(object sender, RoutedEventArgs e)
-    {
-        InspectorDividerColumn.Width = new GridLength(8);
-        InspectorDivider.Visibility = Visibility.Visible;
-        ApplyInspectorWidth(_uiLayoutSettings.InspectorWidth);
-        InspectorPanel.Visibility = Visibility.Visible;
-        InspectorOpenButton.Visibility = Visibility.Collapsed;
-        DispatcherQueue.TryEnqueue(() => DrawGraph());
-    }
-
-    private void InspectorDivider_DragDelta(object sender, DragDeltaEventArgs e)
-    {
-        var maximumWidth = Math.Clamp(
-            Root.ActualWidth - ExplorerColumn.ActualWidth - InspectorDividerColumn.ActualWidth - 420,
-            240,
-            720);
-        ApplyInspectorWidth(Math.Clamp(
-            InspectorColumn.ActualWidth - e.HorizontalChange,
-            240,
-            maximumWidth));
-    }
-
-    private void InspectorDivider_DragCompleted(object sender, DragCompletedEventArgs e)
-    {
-        _uiLayoutSettingsService.Save(_uiLayoutSettings);
-        DispatcherQueue.TryEnqueue(() => DrawGraph());
-    }
-
-    private void ApplyInspectorWidth(double width)
-    {
-        width = Math.Clamp(width, 240, 720);
-        InspectorColumn.Width = new GridLength(width);
-        _uiLayoutSettings = _uiLayoutSettings with { InspectorWidth = width };
-    }
-
     private async void MarkdownPreview_Loaded(object sender, RoutedEventArgs e)
     {
         if (_previewReady) return;
@@ -556,7 +515,12 @@ public sealed partial class MainWindow : Window
             using var message = JsonDocument.Parse(args.WebMessageAsJson);
             var root = message.RootElement;
             if (!root.TryGetProperty("type", out var type)) return;
-            if (type.GetString() == "fold-state"
+            var messageType = type.GetString();
+            if (messageType is "workspace-mode-toggle" or "workspace-mode-document")
+            {
+                HandleWorkspaceModeMessage(messageType);
+            }
+            else if (messageType == "fold-state"
                 && root.TryGetProperty("key", out var keyElement)
                 && root.TryGetProperty("open", out var openElement)
                 && keyElement.GetString() is { Length: > 0 } key
@@ -564,7 +528,7 @@ public sealed partial class MainWindow : Window
             {
                 CurrentFoldStates()[key] = openElement.GetBoolean();
             }
-            else if (type.GetString() == "preview-scroll"
+            else if (messageType == "preview-scroll"
                 && _selected is not null
                 && root.TryGetProperty("y", out var yElement)
                 && yElement.TryGetDouble(out var scrollY)
@@ -580,7 +544,7 @@ public sealed partial class MainWindow : Window
                     SyncEditorToPreview(scrollY / maximumScrollY);
                 }
             }
-            else if (type.GetString() == "focus-editor")
+            else if (messageType == "focus-editor")
             {
                 if (_selected?.IsReadOnly == true) return;
                 ClearPreviewHoverSelection(restoreOriginalSelection: false);
@@ -594,7 +558,7 @@ public sealed partial class MainWindow : Window
                     DispatcherQueue.TryEnqueue(() => CenterEditorOnCharacter(offset));
                 });
             }
-            else if (type.GetString() == "hover-editor"
+            else if (messageType == "hover-editor"
                 && root.TryGetProperty("offset", out var hoverOffsetElement)
                 && hoverOffsetElement.TryGetInt32(out var hoverOffset))
             {
@@ -604,7 +568,7 @@ public sealed partial class MainWindow : Window
                         : -1;
                 ShowPreviewHoverSelection(hoverOffset, hoverEndOffset);
             }
-            else if (type.GetString() == "hover-editor-clear")
+            else if (messageType == "hover-editor-clear")
             {
                 ClearPreviewHoverSelection();
             }

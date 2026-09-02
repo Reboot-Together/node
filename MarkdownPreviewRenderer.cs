@@ -255,6 +255,15 @@ public static class MarkdownPreviewRenderer
               const root = document.body;
               const initialFoldStates = {{serializedFoldStates}};
               const initialScrollY = {{serializedScrollY}};
+              document.addEventListener('keydown', event => {
+                if (event.ctrlKey && !event.altKey && !event.metaKey && event.key.toLowerCase() === 'g') {
+                  event.preventDefault();
+                  event.stopPropagation();
+                  window.chrome.webview.postMessage({ type: 'workspace-mode-toggle' });
+                } else if (event.key === 'Escape') {
+                  window.chrome.webview.postMessage({ type: 'workspace-mode-document' });
+                }
+              }, true);
               const originalNodes = Array.from(root.childNodes);
               const stack = [];
               const foldKeyCounts = new Map();

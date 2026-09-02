@@ -5,6 +5,10 @@
     xmlns:local="using:AsterismApp"
     Title="Asterism">
   <Grid x:Name="Root" Background="{StaticResource AppBackground}" RowDefinitions="48,*">
+    <Grid.KeyboardAccelerators>
+      <KeyboardAccelerator Key="G" Modifiers="Control" Invoked="WorkspaceGraph_Invoked" />
+      <KeyboardAccelerator Key="Escape" Invoked="WorkspaceEscape_Invoked" />
+    </Grid.KeyboardAccelerators>
     <Border x:Name="AppTitleBar" Background="{StaticResource AppBackground}" BorderBrush="{StaticResource CardBorder}" BorderThickness="0,0,0,1" Padding="12,0">
       <Grid>
         <Grid.ColumnDefinitions>
@@ -33,8 +37,6 @@
       <Grid.ColumnDefinitions>
         <ColumnDefinition x:Name="ExplorerColumn" Width="232" />
         <ColumnDefinition Width="*" />
-        <ColumnDefinition x:Name="InspectorDividerColumn" Width="8" />
-        <ColumnDefinition x:Name="InspectorColumn" Width="348" />
       </Grid.ColumnDefinitions>
       <Border x:Name="ExplorerPanel" Background="{StaticResource SidebarBackground}" BorderBrush="{StaticResource CardBorder}" BorderThickness="0,0,1,0" Padding="10,12,9,10">
         <Grid RowDefinitions="Auto,Auto,*" RowSpacing="10">
@@ -90,7 +92,20 @@
         </Grid>
       </Border>
 
-      <Grid x:Name="DocumentGroupsHost" Grid.Column="1" ColumnSpacing="1">
+      <Border Grid.Column="1" Background="{StaticResource DocumentBackground}" BorderBrush="{StaticResource CardBorder}" BorderThickness="0,0,0,1" Height="38" VerticalAlignment="Top" Canvas.ZIndex="20">
+        <StackPanel Orientation="Horizontal" Spacing="2" Margin="16,3" VerticalAlignment="Stretch">
+          <Grid>
+            <Button x:Name="DocumentModeButton" Content="문서" Style="{StaticResource QuietButton}" Padding="12,5" MinWidth="0" Click="DocumentMode_Click" ToolTipService.ToolTip="문서 보기" />
+            <Border x:Name="DocumentModeIndicator" Height="2" Background="{StaticResource Positive}" VerticalAlignment="Bottom" Margin="8,0" IsHitTestVisible="False" />
+          </Grid>
+          <Grid>
+            <Button x:Name="ConstellationModeButton" Content="성좌 지도" Style="{StaticResource QuietButton}" Padding="12,5" MinWidth="0" Click="ConstellationMode_Click" ToolTipService.ToolTip="현재 노트의 성좌 지도 열기 (Ctrl+G)" />
+            <Border x:Name="ConstellationModeIndicator" Height="2" Background="{StaticResource Positive}" VerticalAlignment="Bottom" Margin="8,0" Visibility="Collapsed" IsHitTestVisible="False" />
+          </Grid>
+        </StackPanel>
+      </Border>
+
+      <Grid x:Name="DocumentGroupsHost" Grid.Column="1" Margin="0,38,0,0" ColumnSpacing="1">
         <Grid.ColumnDefinitions>
           <ColumnDefinition Width="*" />
         </Grid.ColumnDefinitions>
@@ -155,81 +170,59 @@
       </Border>
       </Grid>
 
-      <Button x:Name="ExplorerOpenButton" Grid.Column="1" Content="›" Style="{StaticResource QuietButton}" Padding="8,5" MinWidth="0" HorizontalAlignment="Left" VerticalAlignment="Top" Margin="7,12,0,0" Visibility="Collapsed" Click="ExplorerOpen_Click" ToolTipService.ToolTip="노트 탐색기 펼치기" Canvas.ZIndex="20" />
+      <Button x:Name="ExplorerOpenButton" Grid.Column="1" Content="›" Style="{StaticResource QuietButton}" Padding="8,5" MinWidth="0" HorizontalAlignment="Left" VerticalAlignment="Top" Margin="7,4,0,0" Visibility="Collapsed" Click="ExplorerOpen_Click" ToolTipService.ToolTip="노트 탐색기 펼치기" Canvas.ZIndex="30" />
 
-      <Button x:Name="InspectorOpenButton" Grid.Column="1" Content="‹" Style="{StaticResource QuietButton}" Padding="8,5" MinWidth="0" HorizontalAlignment="Right" VerticalAlignment="Top" Margin="0,12,10,0" Visibility="Collapsed" Click="InspectorOpen_Click" ToolTipService.ToolTip="연결 패널 펼치기" Canvas.ZIndex="20" />
-
-      <Grid x:Name="InspectorDivider" Grid.Column="2" Background="Transparent" AutomationProperties.Name="문서 성좌 패널 크기 조절" ToolTipService.ToolTip="드래그하여 문서와 성좌 패널 너비 조절">
-        <Border Width="1" Background="{StaticResource CardBorder}" HorizontalAlignment="Center" IsHitTestVisible="False" />
-        <local:HorizontalResizeBorder Background="Transparent" HorizontalAlignment="Stretch" VerticalAlignment="Stretch">
-          <Thumb Background="Transparent" HorizontalAlignment="Stretch" VerticalAlignment="Stretch" AutomationProperties.Name="문서 성좌 패널 크기 조절 손잡이" DragDelta="InspectorDivider_DragDelta" DragCompleted="InspectorDivider_DragCompleted" />
-        </local:HorizontalResizeBorder>
-      </Grid>
-
-      <Border x:Name="InspectorPanel" Grid.Column="3" Background="{StaticResource InspectorBackground}" Padding="12,13,12,10">
-        <Grid RowSpacing="9">
-          <Grid.RowDefinitions>
-            <RowDefinition Height="Auto" />
-            <RowDefinition Height="Auto" />
-            <RowDefinition Height="Auto" MaxHeight="82" />
-            <RowDefinition Height="Auto" />
-            <RowDefinition Height="108" />
-            <RowDefinition Height="*" />
-            <RowDefinition Height="Auto" />
-          </Grid.RowDefinitions>
-          <Grid ColumnDefinitions="*,Auto">
-            <StackPanel Spacing="2">
-              <TextBlock Text="성좌" FontSize="{Binding Ui, Source={StaticResource Typography}}" FontWeight="SemiBold" />
-              <TextBlock Text="현재 노트에서 이어진 지식의 별들" Foreground="{StaticResource MutedText}" FontSize="{Binding Small, Source={StaticResource Typography}}" />
+      <Border x:Name="ConstellationPanel" Grid.Column="1" Margin="0,38,0,0" Visibility="Collapsed" Background="#151515" Padding="14,12,14,14" Canvas.ZIndex="10">
+        <Grid RowDefinitions="Auto,*" RowSpacing="10">
+          <Grid ColumnDefinitions="*,Auto,Auto,Auto">
+            <StackPanel VerticalAlignment="Center" Spacing="1">
+              <TextBlock x:Name="ConstellationTitleText" Text="성좌 지도" FontWeight="SemiBold" FontSize="{Binding Ui, Source={StaticResource Typography}}" Foreground="#E0E0E0" />
+              <TextBlock Text="현재 노트를 중심으로 주변 지식을 탐험합니다 · Esc로 문서 복귀" FontSize="{Binding Small, Source={StaticResource Typography}}" Foreground="#8F8F8F" />
             </StackPanel>
-            <Button Grid.Column="1" Content="›" Style="{StaticResource QuietButton}" Padding="8,4" MinWidth="0" Click="InspectorCollapse_Click" ToolTipService.ToolTip="연결 패널 접기" />
+            <Button Grid.Column="1" Content="−" Style="{StaticResource QuietButton}" Padding="8,4" MinWidth="0" Click="GraphZoomOut_Click" ToolTipService.ToolTip="축소" />
+            <TextBlock x:Name="GraphZoomText" Grid.Column="2" Text="100%" Foreground="#8F8F8F" FontSize="{Binding Small, Source={StaticResource Typography}}" VerticalAlignment="Center" Margin="8,0" />
+            <Button Grid.Column="3" Content="＋" Style="{StaticResource QuietButton}" Padding="8,4" MinWidth="0" Click="GraphZoomIn_Click" ToolTipService.ToolTip="확대" />
           </Grid>
-          <Border Grid.Row="1" Background="{StaticResource CardBackground}" CornerRadius="4" Padding="9,7">
-            <TextBlock x:Name="BacklinkTitle" Foreground="{StaticResource PrimaryText}" FontWeight="Normal" FontSize="{Binding Small, Source={StaticResource Typography}}" />
-          </Border>
-          <ListView x:Name="BacklinkList" Grid.Row="2" Background="Transparent" BorderThickness="0" SelectionChanged="BacklinkList_SelectionChanged" SelectionMode="Single">
-            <ListView.ItemContainerStyle><Style TargetType="ListViewItem"><Setter Property="Padding" Value="0" /><Setter Property="Margin" Value="0,0,0,3" /><Setter Property="MinHeight" Value="0" /></Style></ListView.ItemContainerStyle>
-            <ListView.ItemTemplate><DataTemplate x:DataType="local:NoteInfo"><Border Background="{StaticResource CardBackground}" CornerRadius="4" Padding="8,6"><TextBlock Text="{x:Bind Title}" FontSize="{Binding Small, Source={StaticResource Typography}}" Foreground="{StaticResource PrimaryText}" /></Border></DataTemplate></ListView.ItemTemplate>
-          </ListView>
-          <Grid Grid.Row="3" ColumnDefinitions="*,Auto" Margin="0,2,0,0">
-            <TextBlock Text="발견된 성좌" FontWeight="SemiBold" FontSize="{Binding Small, Source={StaticResource Typography}}" Foreground="{StaticResource PrimaryText}" VerticalAlignment="Center" />
-            <TextBlock x:Name="SemanticStatusText" Grid.Column="1" Text="준비 중" Foreground="{StaticResource MutedText}" FontSize="{Binding Small, Source={StaticResource Typography}}" VerticalAlignment="Center" />
-          </Grid>
-          <ScrollViewer Grid.Row="4" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
-            <ItemsControl x:Name="SemanticSuggestionList">
-              <ItemsControl.ItemTemplate>
-                <DataTemplate x:DataType="local:SemanticSuggestion">
-                  <Grid ColumnDefinitions="*,Auto,Auto" ColumnSpacing="5" Margin="0,0,0,4">
-                    <Button Tag="{x:Bind Note.Path}" Content="{x:Bind Note.Title}" Click="SemanticSuggestionOpen_Click" Background="{StaticResource CardBackground}" Foreground="{StaticResource PrimaryText}" BorderThickness="0" CornerRadius="4" Padding="8,6" FontSize="{Binding Small, Source={StaticResource Typography}}" HorizontalAlignment="Stretch" HorizontalContentAlignment="Left" />
-                    <TextBlock Grid.Column="1" Text="{x:Bind ScoreText}" Foreground="{StaticResource MutedText}" FontSize="{Binding Small, Source={StaticResource Typography}}" VerticalAlignment="Center" />
-                    <Button Grid.Column="2" Tag="{x:Bind Note.Path}" Content="＋ 링크" Click="SemanticSuggestionLink_Click" Style="{StaticResource QuietButton}" Padding="6,4" MinWidth="0" FontSize="{Binding Small, Source={StaticResource Typography}}" />
-                  </Grid>
-                </DataTemplate>
-              </ItemsControl.ItemTemplate>
-            </ItemsControl>
-          </ScrollViewer>
-          <Grid Grid.Row="5" Margin="0,3,0,0" RowDefinitions="Auto,*" RowSpacing="6">
-            <Grid ColumnDefinitions="*,Auto,Auto,Auto">
-              <StackPanel VerticalAlignment="Center" Spacing="1">
-                <TextBlock Text="성좌 지도" FontWeight="SemiBold" FontSize="{Binding Small, Source={StaticResource Typography}}" Foreground="{StaticResource PrimaryText}" />
-                <TextBlock Text="밝은 선은 링크 · 흐린 선은 발견된 관계" FontSize="{Binding Small, Source={StaticResource Typography}}" Foreground="{StaticResource MutedText}" />
-              </StackPanel>
-              <Button Grid.Column="1" Content="−" Style="{StaticResource QuietButton}" Padding="7,2" MinWidth="0" Click="GraphZoomOut_Click" />
-              <TextBlock x:Name="GraphZoomText" Grid.Column="2" Text="100%" Foreground="{StaticResource MutedText}" FontSize="{Binding Small, Source={StaticResource Typography}}" VerticalAlignment="Center" Margin="7,0" />
-              <Button Grid.Column="3" Content="＋" Style="{StaticResource QuietButton}" Padding="7,2" MinWidth="0" Click="GraphZoomIn_Click" />
-            </Grid>
-            <Border Grid.Row="1" Background="#151515" BorderBrush="#303030" BorderThickness="1" CornerRadius="6" Padding="3">
+          <Grid Grid.Row="1">
+            <Border Background="#151515" BorderBrush="#303030" BorderThickness="1" CornerRadius="7" Padding="3">
               <ScrollViewer x:Name="GraphScroll" HorizontalScrollBarVisibility="Hidden" VerticalScrollBarVisibility="Hidden" HorizontalContentAlignment="Center" VerticalContentAlignment="Center" ZoomMode="Disabled" SizeChanged="GraphScroll_SizeChanged">
-                <local:DirectionalCursorCanvas x:Name="GraphCanvas" Width="720" Height="1200" Background="#151515" DoubleTapped="GraphCanvas_DoubleTapped" PointerEntered="GraphCanvas_PointerEntered" PointerExited="GraphCanvas_PointerExited" PointerPressed="GraphCanvas_PointerPressed" PointerMoved="GraphCanvas_PointerMoved" PointerReleased="GraphCanvas_PointerReleased" PointerCanceled="GraphCanvas_PointerReleased" PointerCaptureLost="GraphCanvas_PointerReleased" />
+                <local:DirectionalCursorCanvas x:Name="GraphCanvas" Width="1200" Height="900" Background="#151515" DoubleTapped="GraphCanvas_DoubleTapped" PointerEntered="GraphCanvas_PointerEntered" PointerExited="GraphCanvas_PointerExited" PointerPressed="GraphCanvas_PointerPressed" PointerMoved="GraphCanvas_PointerMoved" PointerReleased="GraphCanvas_PointerReleased" PointerCanceled="GraphCanvas_PointerReleased" PointerCaptureLost="GraphCanvas_PointerReleased" />
               </ScrollViewer>
             </Border>
+            <Expander Header="연결 정보" IsExpanded="False" Width="300" MaxHeight="650" HorizontalAlignment="Right" VerticalAlignment="Top" Margin="12" Background="{StaticResource SidebarBackground}" FontSize="{Binding Small, Source={StaticResource Typography}}" Canvas.ZIndex="20">
+              <ScrollViewer MaxHeight="590" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+                <StackPanel Spacing="8" Padding="10,8,10,10">
+                  <TextBlock x:Name="BacklinkTitle" Foreground="{StaticResource PrimaryText}" FontWeight="SemiBold" FontSize="{Binding Small, Source={StaticResource Typography}}" />
+                  <ListView x:Name="BacklinkList" MaxHeight="120" Background="Transparent" BorderThickness="0" SelectionChanged="BacklinkList_SelectionChanged" SelectionMode="Single">
+                    <ListView.ItemContainerStyle><Style TargetType="ListViewItem"><Setter Property="Padding" Value="0" /><Setter Property="Margin" Value="0,0,0,3" /><Setter Property="MinHeight" Value="0" /></Style></ListView.ItemContainerStyle>
+                    <ListView.ItemTemplate><DataTemplate x:DataType="local:NoteInfo"><Border Background="{StaticResource CardBackground}" CornerRadius="4" Padding="8,6"><TextBlock Text="{x:Bind Title}" FontSize="{Binding Small, Source={StaticResource Typography}}" Foreground="{StaticResource PrimaryText}" /></Border></DataTemplate></ListView.ItemTemplate>
+                  </ListView>
+                  <Border Height="1" Background="{StaticResource CardBorder}" Margin="0,2" />
+                  <Grid ColumnDefinitions="*,Auto">
+                    <TextBlock Text="발견된 성좌" FontWeight="SemiBold" FontSize="{Binding Small, Source={StaticResource Typography}}" Foreground="{StaticResource PrimaryText}" VerticalAlignment="Center" />
+                    <TextBlock x:Name="SemanticStatusText" Grid.Column="1" Text="준비 중" Foreground="{StaticResource MutedText}" FontSize="{Binding Small, Source={StaticResource Typography}}" VerticalAlignment="Center" />
+                  </Grid>
+                  <ItemsControl x:Name="SemanticSuggestionList">
+                    <ItemsControl.ItemTemplate>
+                      <DataTemplate x:DataType="local:SemanticSuggestion">
+                        <Grid ColumnDefinitions="*,Auto,Auto" ColumnSpacing="5" Margin="0,0,0,4">
+                          <Button Tag="{x:Bind Note.Path}" Content="{x:Bind Note.Title}" Click="SemanticSuggestionOpen_Click" Background="{StaticResource CardBackground}" Foreground="{StaticResource PrimaryText}" BorderThickness="0" CornerRadius="4" Padding="8,6" FontSize="{Binding Small, Source={StaticResource Typography}}" HorizontalAlignment="Stretch" HorizontalContentAlignment="Left" />
+                          <TextBlock Grid.Column="1" Text="{x:Bind ScoreText}" Foreground="{StaticResource MutedText}" FontSize="{Binding Small, Source={StaticResource Typography}}" VerticalAlignment="Center" />
+                          <Button Grid.Column="2" Tag="{x:Bind Note.Path}" Content="＋ 링크" Click="SemanticSuggestionLink_Click" Style="{StaticResource QuietButton}" Padding="6,4" MinWidth="0" FontSize="{Binding Small, Source={StaticResource Typography}}" />
+                        </Grid>
+                      </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                  </ItemsControl>
+                  <Expander Header="ChatGPT 대화 가져오기" IsExpanded="False" FontSize="{Binding Small, Source={StaticResource Typography}}" HorizontalAlignment="Stretch" HorizontalContentAlignment="Stretch">
+                    <StackPanel Spacing="7" Padding="0,8,0,0" HorizontalAlignment="Stretch">
+                      <TextBox x:Name="ShareUrlBox" Style="{StaticResource Field}" PlaceholderText="공유 링크를 붙여 넣으세요" TextChanged="ShareUrl_TextChanged" />
+                      <Button x:Name="ImportButton" Content="가져오기" Style="{StaticResource QuietButton}" HorizontalAlignment="Stretch" HorizontalContentAlignment="Center" Padding="12,7" FontSize="{Binding Small, Source={StaticResource Typography}}" IsEnabled="False" Click="ImportChat_Click" />
+                    </StackPanel>
+                  </Expander>
+                </StackPanel>
+              </ScrollViewer>
+            </Expander>
           </Grid>
-          <Expander Grid.Row="6" Header="ChatGPT 대화 가져오기" IsExpanded="True" FontSize="{Binding Small, Source={StaticResource Typography}}" HorizontalAlignment="Stretch" HorizontalContentAlignment="Stretch">
-            <StackPanel Spacing="7" Padding="0,8,0,0" HorizontalAlignment="Stretch">
-              <TextBox x:Name="ShareUrlBox" Style="{StaticResource Field}" PlaceholderText="공유 링크를 붙여 넣으세요" TextChanged="ShareUrl_TextChanged" />
-              <Button x:Name="ImportButton" Content="가져오기" Style="{StaticResource QuietButton}" HorizontalAlignment="Stretch" HorizontalContentAlignment="Center" Padding="12,7" FontSize="{Binding Small, Source={StaticResource Typography}}" IsEnabled="False" Click="ImportChat_Click" />
-            </StackPanel>
-          </Expander>
         </Grid>
       </Border>
     </Grid>
