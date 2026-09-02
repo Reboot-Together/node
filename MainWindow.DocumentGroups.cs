@@ -41,7 +41,8 @@ public sealed partial class MainWindow
             FindNoteByTitle,
             SaveSideDocument,
             _uiLayoutSettings.FontScale,
-            CurrentAccent.CssColor);
+            CurrentAccent.CssColor,
+            CurrentSurface.Key);
         pane.CloseRequested += SideDocument_CloseRequested;
         _sideDocumentPanes.Add(pane);
         DocumentGroupsHost.Children.Add(pane);
@@ -112,6 +113,6 @@ public sealed partial class MainWindow
     private void RefreshSideDocumentAppearance()
     {
         foreach (var pane in _sideDocumentPanes)
-            pane.RefreshAppearance(_uiLayoutSettings.FontScale, CurrentAccent.CssColor);
+            pane.RefreshAppearance(_uiLayoutSettings.FontScale, CurrentAccent.CssColor, CurrentSurface.Key);
     }
 }

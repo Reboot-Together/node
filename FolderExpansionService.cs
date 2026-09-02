@@ -55,6 +55,38 @@ public sealed class FolderExpansionService
         else ExpandExclusive(rootPath, folders, expandedFolders, folder);
     }
 
+    public void EnforceExclusive(
+        string rootPath,
+        IReadOnlyList<string> folders,
+        ISet<string> expandedFolders,
+        IEnumerable<string>? preferredFolders = null)
+    {
+        var root = Normalize(rootPath);
+        var available = folders
+            .Select(Normalize)
+            .Append(root)
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var preferred = (preferredFolders ?? [])
+            .Select(Normalize)
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var normalizedExpanded = expandedFolders
+            .Select(Normalize)
+            .Where(available.Contains)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+        expandedFolders.Clear();
+        expandedFolders.Add(root);
+        foreach (var group in normalizedExpanded
+            .Where(folder => !folder.Equals(root, StringComparison.OrdinalIgnoreCase))
+            .GroupBy(folder => ParentOf(root, folder), StringComparer.OrdinalIgnoreCase))
+        {
+            var selected = group.FirstOrDefault(preferred.Contains)
+                ?? group.OrderBy(Path.GetFileName, StringComparer.CurrentCultureIgnoreCase).First();
+            expandedFolders.Add(selected);
+        }
+    }
+
     private static string Normalize(string path) => IsVirtual(path)
         ? path.TrimEnd('/')
         : Path.TrimEndingDirectorySeparator(Path.GetFullPath(path));

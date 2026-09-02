@@ -30,7 +30,7 @@ public enum GraphCursorDirection
 public static class GraphViewportService
 {
     public const double MinimumZoom = .18;
-    public const double MaximumZoom = 2.4;
+    public const double MaximumZoom = 4.0;
 
     public static double ChangeZoom(double currentZoom, bool zoomIn, double factor) =>
         Math.Clamp(currentZoom * (zoomIn ? factor : 1 / factor), MinimumZoom, MaximumZoom);

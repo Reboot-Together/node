@@ -145,10 +145,10 @@ public sealed class BuiltInGuideService
         var expanded = normalizedQuery.Length > 0 || expandedFolders.Contains(FolderPath);
         var items = new List<VaultItem>
         {
-            new("Asterism 안내", FolderPath, true, false, expanded, 1, null)
+            new("Asterism 안내", FolderPath, true, false, expanded, 0, null)
         };
         if (expanded)
-            items.AddRange(matches.Select(note => new VaultItem(note.Title, note.Path, false, false, false, 2, note)));
+            items.AddRange(matches.Select(note => new VaultItem(note.Title, note.Path, false, false, false, 1, note)));
         return items;
     }
 

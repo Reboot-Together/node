@@ -118,8 +118,18 @@ public sealed partial class MainWindow : Window
     private void ApplySearch()
     {
         var query = SearchBox?.Text.Trim() ?? "";
+        var preferredFolders = _selected is null
+            ? []
+            : _selected.IsReadOnly
+                ? [BuiltInGuideService.FolderPath]
+                : _vaultTreeService.AncestorFolders(_workspace.RootPath, _selected.Path);
+        _folderExpansionService.EnforceExclusive(
+            _workspace.RootPath,
+            ExplorerFolders,
+            _expandedFolders,
+            preferredFolders);
         var items = _vaultTreeService.Build(_workspace.RootPath, _notes, _folders, _expandedFolders, query).ToList();
-        items.InsertRange(Math.Min(1, items.Count), _guideService.BuildItems(_expandedFolders, query));
+        items.InsertRange(0, _guideService.BuildItems(_expandedFolders, query));
         _vaultItems = items;
         NoteList.ItemsSource = _vaultItems;
         if (_selected is not null)
@@ -519,7 +529,8 @@ public sealed partial class MainWindow : Window
             CurrentFoldStates(),
             CurrentPreviewScrollY(),
             _uiLayoutSettings.FontScale,
-            CurrentAccent.CssColor));
+            CurrentAccent.CssColor,
+            CurrentSurface.Key));
     }
 
     private Dictionary<string, bool> CurrentFoldStates()

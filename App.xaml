@@ -12,9 +12,19 @@
     <SolidColorBrush x:Key="AppBackground" Color="#181818" />
     <SolidColorBrush x:Key="SidebarBackground" Color="#202020" />
     <SolidColorBrush x:Key="InspectorBackground" Color="#202020" />
+    <SolidColorBrush x:Key="DocumentBackground" Color="#1E1E1E" />
     <SolidColorBrush x:Key="CardBackground" Color="#252526" />
     <SolidColorBrush x:Key="CardBorder" Color="#303030" />
+    <SolidColorBrush x:Key="PrimaryText" Color="#D4D4D4" />
     <SolidColorBrush x:Key="MutedText" Color="#969696" />
+    <SolidColorBrush x:Key="PlaceholderText" Color="#858585" />
+    <SolidColorBrush x:Key="HoverBackground" Color="#282828" />
+    <SolidColorBrush x:Key="PressedBackground" Color="#333333" />
+    <SolidColorBrush x:Key="SelectedBackground" Color="#2A2A2A" />
+    <SolidColorBrush x:Key="SelectedHoverBackground" Color="#303030" />
+    <SolidColorBrush x:Key="ScrollThumb" Color="#555555" />
+    <SolidColorBrush x:Key="ScrollThumbHover" Color="#707070" />
+    <SolidColorBrush x:Key="ScrollThumbPressed" Color="#808080" />
     <SolidColorBrush x:Key="Accent" Color="#333333" />
     <SolidColorBrush x:Key="Positive" Color="#D1AF61" />
     <SolidColorBrush x:Key="TextFillColorPrimaryBrush" Color="#D4D4D4" />
@@ -33,24 +43,24 @@
       <Setter Property="CornerRadius" Value="0" />
     </Style>
     <Style x:Key="Field" TargetType="TextBox">
-      <Setter Property="Background" Value="#252526" />
-      <Setter Property="Foreground" Value="#D4D4D4" />
-      <Setter Property="PlaceholderForeground" Value="#858585" />
-      <Setter Property="BorderBrush" Value="#303030" />
+      <Setter Property="Background" Value="{StaticResource CardBackground}" />
+      <Setter Property="Foreground" Value="{StaticResource PrimaryText}" />
+      <Setter Property="PlaceholderForeground" Value="{StaticResource PlaceholderText}" />
+      <Setter Property="BorderBrush" Value="{StaticResource CardBorder}" />
       <Setter Property="CornerRadius" Value="4" />
       <Setter Property="Padding" Value="10,7" />
       <Setter Property="FontSize" Value="{Binding Ui, Source={StaticResource Typography}}" />
     </Style>
     <Style x:Key="AccentButton" TargetType="Button">
       <Setter Property="Background" Value="{StaticResource Accent}" />
-      <Setter Property="Foreground" Value="#F0F0F0" />
+      <Setter Property="Foreground" Value="{StaticResource PrimaryText}" />
       <Setter Property="CornerRadius" Value="5" />
       <Setter Property="Padding" Value="12,7" />
       <Setter Property="FontSize" Value="{Binding Small, Source={StaticResource Typography}}" />
     </Style>
     <Style x:Key="QuietButton" TargetType="Button">
-      <Setter Property="Background" Value="#252526" />
-      <Setter Property="Foreground" Value="#CCCCCC" />
+      <Setter Property="Background" Value="{StaticResource CardBackground}" />
+      <Setter Property="Foreground" Value="{StaticResource PrimaryText}" />
       <Setter Property="CornerRadius" Value="4" />
       <Setter Property="Padding" Value="11,7" />
       <Setter Property="FontSize" Value="{Binding Small, Source={StaticResource Typography}}" />

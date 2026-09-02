@@ -10,17 +10,46 @@ public sealed partial class MainWindow
         (TypographySettings)Application.Current.Resources["Typography"];
 
     private AccentPalette CurrentAccent => AppearanceThemes.Get(_uiLayoutSettings.AccentTheme);
+    private SurfacePalette CurrentSurface => SurfaceThemes.Get(_uiLayoutSettings.SurfaceTheme);
 
     private void ApplyAppearanceSettings(bool refreshContent = true)
     {
         Typography.Apply(_uiLayoutSettings.FontScale);
         var palette = CurrentAccent;
+        var surface = CurrentSurface;
+        Root.RequestedTheme = surface.IsLight ? ElementTheme.Light : ElementTheme.Dark;
+        SetApplicationBrush("AppBackground", surface.AppBackground);
+        SetApplicationBrush("SidebarBackground", surface.SidebarBackground);
+        SetApplicationBrush("InspectorBackground", surface.SidebarBackground);
+        SetApplicationBrush("DocumentBackground", surface.DocumentBackground);
+        SetApplicationBrush("CardBackground", surface.CardBackground);
+        SetApplicationBrush("CardBorder", surface.Border);
+        SetApplicationBrush("PrimaryText", surface.PrimaryText);
+        SetApplicationBrush("MutedText", surface.SecondaryText);
+        SetApplicationBrush("PlaceholderText", surface.PlaceholderText);
+        SetApplicationBrush("HoverBackground", surface.HoverBackground);
+        SetApplicationBrush("PressedBackground", surface.PressedBackground);
+        SetApplicationBrush("SelectedBackground", surface.SelectedBackground);
+        SetApplicationBrush("SelectedHoverBackground", surface.SelectedHoverBackground);
+        SetApplicationBrush("ScrollThumb", surface.ScrollThumb);
+        SetApplicationBrush("ScrollThumbHover", surface.ScrollThumbHover);
+        SetApplicationBrush("ScrollThumbPressed", surface.ScrollThumbPressed);
+        SetApplicationBrush("TextFillColorPrimaryBrush", surface.PrimaryText);
+        SetApplicationBrush("TextFillColorSecondaryBrush", surface.SecondaryText);
+        SetApplicationBrush("ButtonBackgroundPointerOver", surface.HoverBackground);
+        SetApplicationBrush("ButtonBackgroundPressed", surface.PressedBackground);
+        SetApplicationBrush("ButtonForegroundPointerOver", surface.PrimaryText);
+        SetApplicationBrush("ButtonForegroundPressed", surface.PrimaryText);
+        SetApplicationBrush("ListViewItemBackgroundSelected", surface.SelectedBackground);
+        SetApplicationBrush("ListViewItemBackgroundSelectedPointerOver", surface.SelectedHoverBackground);
+        SetApplicationBrush("ListViewItemBackgroundPointerOver", surface.HoverBackground);
         if (Application.Current.Resources["Positive"] is SolidColorBrush positive)
             positive.Color = palette.Accent;
         if (Application.Current.Resources["Accent"] is SolidColorBrush accent)
             accent.Color = palette.Surface;
-        if (Editor?.Resources["TextControlSelectionHighlightColor"] is SolidColorBrush selection)
-            selection.Color = palette.Surface;
+        ApplyEditorPalette(Editor, surface, palette.Surface);
+        MarkdownPreview.DefaultBackgroundColor = surface.DocumentBackground;
+        ApplyTitleBarAppearance(surface);
 
         if (!refreshContent) return;
         RefreshSideDocumentAppearance();
@@ -51,7 +80,14 @@ public sealed partial class MainWindow
         Grid.SetColumn(fontValue, 1);
         fontGrid.Children.Add(fontValue);
 
-        var themeSelector = new ComboBox
+        var surfaceSelector = new ComboBox
+        {
+            ItemsSource = SurfaceThemes.All,
+            DisplayMemberPath = nameof(SurfacePalette.DisplayName),
+            SelectedItem = CurrentSurface,
+            HorizontalAlignment = HorizontalAlignment.Stretch
+        };
+        var accentSelector = new ComboBox
         {
             ItemsSource = AppearanceThemes.All,
             DisplayMemberPath = nameof(AccentPalette.DisplayName),
@@ -96,8 +132,10 @@ public sealed partial class MainWindow
         var content = new StackPanel { Spacing = 10, MinWidth = 390 };
         content.Children.Add(SettingsHeading("글자 크기"));
         content.Children.Add(fontGrid);
+        content.Children.Add(SettingsHeading("화면 테마"));
+        content.Children.Add(surfaceSelector);
         content.Children.Add(SettingsHeading("강조색"));
-        content.Children.Add(themeSelector);
+        content.Children.Add(accentSelector);
         content.Children.Add(SettingsHeading("저장소"));
         content.Children.Add(storagePathText);
         content.Children.Add(storageButtons);
@@ -126,9 +164,15 @@ public sealed partial class MainWindow
             fontValue.Text = $"{scale:P0}";
             ApplyAppearanceSettings();
         };
-        themeSelector.SelectionChanged += (_, _) =>
+        surfaceSelector.SelectionChanged += (_, _) =>
         {
-            if (themeSelector.SelectedItem is not AccentPalette palette) return;
+            if (surfaceSelector.SelectedItem is not SurfacePalette surface) return;
+            _uiLayoutSettings = _uiLayoutSettings with { SurfaceTheme = surface.Key };
+            ApplyAppearanceSettings();
+        };
+        accentSelector.SelectionChanged += (_, _) =>
+        {
+            if (accentSelector.SelectedItem is not AccentPalette palette) return;
             _uiLayoutSettings = _uiLayoutSettings with { AccentTheme = palette.Key };
             ApplyAppearanceSettings();
         };
@@ -145,6 +189,36 @@ public sealed partial class MainWindow
 
         await dialog.ShowAsync();
         _uiLayoutSettingsService.Save(_uiLayoutSettings);
+    }
+
+    private static void SetApplicationBrush(string key, Windows.UI.Color color)
+    {
+        if (Application.Current.Resources[key] is SolidColorBrush brush) brush.Color = color;
+    }
+
+    private static void ApplyEditorPalette(TextBox editor, SurfacePalette surface, Windows.UI.Color selectionColor)
+    {
+        editor.Background = new SolidColorBrush(surface.DocumentBackground);
+        editor.Foreground = new SolidColorBrush(surface.PrimaryText);
+        editor.PlaceholderForeground = new SolidColorBrush(surface.PlaceholderText);
+        SetLocalBrush(editor, "TextControlBackground", surface.DocumentBackground);
+        SetLocalBrush(editor, "TextControlBackgroundPointerOver", surface.DocumentBackground);
+        SetLocalBrush(editor, "TextControlBackgroundFocused", surface.DocumentBackground);
+        SetLocalBrush(editor, "TextControlForeground", surface.PrimaryText);
+        SetLocalBrush(editor, "TextControlForegroundPointerOver", surface.PrimaryText);
+        SetLocalBrush(editor, "TextControlForegroundFocused", surface.PrimaryText);
+        SetLocalBrush(editor, "TextControlPlaceholderForeground", surface.PlaceholderText);
+        SetLocalBrush(editor, "TextControlPlaceholderForegroundPointerOver", surface.PlaceholderText);
+        SetLocalBrush(editor, "TextControlPlaceholderForegroundFocused", surface.PlaceholderText);
+        SetLocalBrush(editor, "TextControlSelectionHighlightColor", selectionColor);
+        SetLocalBrush(editor, "ScrollBarThumbBackground", surface.ScrollThumb);
+        SetLocalBrush(editor, "ScrollBarThumbBackgroundPointerOver", surface.ScrollThumbHover);
+        SetLocalBrush(editor, "ScrollBarThumbBackgroundPressed", surface.ScrollThumbPressed);
+    }
+
+    private static void SetLocalBrush(FrameworkElement element, string key, Windows.UI.Color color)
+    {
+        if (element.Resources[key] is SolidColorBrush brush) brush.Color = color;
     }
 
     private static TextBlock SettingsHeading(string text) => new()

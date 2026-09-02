@@ -23,7 +23,8 @@ public static class MarkdownPreviewRenderer
         IReadOnlyDictionary<string, bool>? foldStates = null,
         double initialScrollY = 0,
         double fontScale = 1,
-        string accentColor = "#D1AF61")
+        string accentColor = "#D1AF61",
+        string surfaceTheme = "dark")
     {
         var body = CodeSyntaxHighlighter.HighlightBlocks(RenderBody(markdown, vaultPath, resolveNote, 0));
         body = Regex.Replace(body, "<script[^>]*>.*?</script>", "", RegexOptions.IgnoreCase | RegexOptions.Singleline);
@@ -32,7 +33,7 @@ public static class MarkdownPreviewRenderer
         body = Regex.Replace(body, "href=\"(?![a-z]+:|#)([^\"]+?)(?:\\.md)?(?:#[^\"]*)?\"", match => $"href=\"node-note://note/{Uri.EscapeDataString(WebUtility.HtmlDecode(match.Groups[1].Value).Replace("%20", " "))}\"");
         fontScale = Math.Clamp(fontScale, .8, 1.4);
         if (!Regex.IsMatch(accentColor, "^#[0-9a-fA-F]{6}$")) accentColor = "#D1AF61";
-        return HtmlShell(body, foldStates, initialScrollY, fontScale, accentColor);
+        return HtmlShell(body, foldStates, initialScrollY, fontScale, accentColor, surfaceTheme);
     }
 
     private static string RenderBody(string markdown, string vaultPath, Func<string, string?>? resolveNote, int depth)
@@ -188,11 +189,33 @@ public static class MarkdownPreviewRenderer
         IReadOnlyDictionary<string, bool>? foldStates,
         double initialScrollY,
         double fontScale,
-        string accentColor)
+        string accentColor,
+        string surfaceTheme)
     {
+        var surface = CssSurfaceFor(surfaceTheme);
         var serializedFoldStates = JsonSerializer.Serialize(foldStates ?? new Dictionary<string, bool>());
         var serializedScrollY = JsonSerializer.Serialize(double.IsFinite(initialScrollY) && initialScrollY > 0 ? initialScrollY : 0);
         var serializedFontScale = fontScale.ToString("0.##", System.Globalization.CultureInfo.InvariantCulture);
+        var colorScheme = surface.IsLight ? "light" : "dark";
+        var page = surface.DocumentBackground;
+        var app = surface.AppBackground;
+        var card = surface.CardBackground;
+        var border = surface.Border;
+        var primary = surface.PrimaryText;
+        var secondary = surface.SecondaryText;
+        var placeholder = surface.PlaceholderText;
+        var hover = surface.HoverBackground;
+        var pressed = surface.PressedBackground;
+        var scroll = surface.ScrollThumb;
+        var scrollHover = surface.ScrollThumbHover;
+        var scrollPressed = surface.ScrollThumbPressed;
+        var strong = surface.IsLight ? "#111111" : "#F0F0F0";
+        var syntaxKeyword = surface.IsLight ? "#AF00DB" : "#C586C0";
+        var syntaxType = surface.IsLight ? "#267F99" : "#4EC9B0";
+        var syntaxFunction = surface.IsLight ? "#795E26" : "#DCDCAA";
+        var syntaxString = surface.IsLight ? "#A31515" : "#CE9178";
+        var syntaxNumber = surface.IsLight ? "#098658" : "#B5CEA8";
+        var syntaxComment = surface.IsLight ? "#008000" : "#6A9955";
         return $$"""
         <!doctype html>
         <html>
@@ -203,24 +226,24 @@ public static class MarkdownPreviewRenderer
           <script src="https://node-assets.local/katex.min.js"></script>
           <script src="https://node-assets.local/auto-render.min.js"></script>
           <style>
-            :root{--font-scale:{{serializedFontScale}};--accent:{{accentColor}}}*{box-sizing:border-box}html{background:#1e1e1e;color-scheme:dark;scrollbar-color:#555 transparent;scrollbar-width:thin}
-            *::-webkit-scrollbar{width:8px;height:8px}*::-webkit-scrollbar-track{background:transparent}*::-webkit-scrollbar-thumb{min-height:28px;background:#555;background-clip:padding-box;border:2px solid transparent;border-radius:999px}*::-webkit-scrollbar-thumb:hover{background:#707070;background-clip:padding-box}*::-webkit-scrollbar-thumb:active{background:#808080;background-clip:padding-box}*::-webkit-scrollbar-button{width:0;height:0;background:transparent}*::-webkit-scrollbar-corner{background:transparent}
-            body{margin:0 auto;max-width:820px;padding:22px 34px 72px;color:#d4d4d4;background:#1e1e1e;font:calc(10.5px * var(--font-scale))/1.72 'Segoe UI Variable Text','Segoe UI','Malgun Gothic',sans-serif;word-break:keep-all;overflow-wrap:anywhere}
-            h1,h2,h3,h4,h5,h6{color:#f0f0f0;font-weight:700;letter-spacing:-.012em}
+            :root{--font-scale:{{serializedFontScale}};--accent:{{accentColor}};--page:{{page}};--app:{{app}};--card:{{card}};--border:{{border}};--primary:{{primary}};--secondary:{{secondary}};--placeholder:{{placeholder}};--hover:{{hover}};--pressed:{{pressed}};--strong:{{strong}}}*{box-sizing:border-box}html{background:var(--page);color-scheme:{{colorScheme}};scrollbar-color:{{scroll}} transparent;scrollbar-width:thin}
+            *::-webkit-scrollbar{width:8px;height:8px}*::-webkit-scrollbar-track{background:transparent}*::-webkit-scrollbar-thumb{min-height:28px;background:{{scroll}};background-clip:padding-box;border:2px solid transparent;border-radius:999px}*::-webkit-scrollbar-thumb:hover{background:{{scrollHover}};background-clip:padding-box}*::-webkit-scrollbar-thumb:active{background:{{scrollPressed}};background-clip:padding-box}*::-webkit-scrollbar-button{width:0;height:0;background:transparent}*::-webkit-scrollbar-corner{background:transparent}
+            body{margin:0 auto;max-width:820px;padding:22px 34px 72px;color:var(--primary);background:var(--page);font:calc(10.5px * var(--font-scale))/1.72 'Segoe UI Variable Text','Segoe UI','Malgun Gothic',sans-serif;word-break:keep-all;overflow-wrap:anywhere}
+            h1,h2,h3,h4,h5,h6{color:var(--strong);font-weight:700;letter-spacing:-.012em}
             h1{font-size:calc(13.3px * var(--font-scale));line-height:1.32;margin:0 0 20px}h2{font-size:calc(11.9px * var(--font-scale));line-height:1.38;margin:30px 0 11px;padding-bottom:7px;border-bottom:1px solid #303030}h3{font-size:calc(10.5px * var(--font-scale));line-height:1.45;margin:24px 0 8px}h4{font-size:calc(9.8px * var(--font-scale));margin:20px 0 7px}h5{font-size:calc(9.1px * var(--font-scale));margin:18px 0 6px}h6{font-size:calc(8.4px * var(--font-scale));margin:16px 0 5px}
-            p{margin:0 0 14px}strong{font-weight:700;color:#f0f0f0}em{color:#b8b8b8}ul,ol{margin:5px 0 18px;padding-left:24px}li{margin:4px 0;padding-left:2px}li>p{margin:0}
-            a{color:#c8c8c8;text-decoration:underline;text-decoration-color:#555}.internal-link{color:var(--accent);font-weight:600;text-decoration:none}.internal-link:hover,a:hover{text-decoration:underline}mark{background:color-mix(in srgb,var(--accent) 32%,#252526);color:#f0f0f0;padding:1px 3px;border-radius:2px}
-            blockquote{margin:18px 0;padding:10px 15px;border-left:3px solid #5a5a5a;color:#c0c0c0;background:#252526;border-radius:0 5px 5px 0}blockquote>:last-child{margin-bottom:0}hr{border:0;border-top:1px solid #303030;margin:28px 0}
-            table{border-collapse:collapse;width:max-content;max-width:100%;margin:18px 0 24px;font-size:calc(9.8px * var(--font-scale))}thead{border-bottom:1px solid #404040}th,td{padding:9px 10px;text-align:left;vertical-align:top;border-bottom:1px solid #303030}th{color:#e8e8e8;font-weight:700;background:#252526}tbody tr:hover{background:#242424}
-            pre{position:relative;overflow:auto;margin:18px 0 22px;padding:25px 18px 17px;background:#181818;border:1px solid #303030;border-radius:8px;white-space:pre-wrap;word-break:normal}pre::before{content:attr(data-language);position:absolute;top:6px;right:9px;color:#727272;font:calc(7.7px * var(--font-scale))/1 'Cascadia Mono','Consolas',monospace;letter-spacing:.06em}code{font:calc(9.1px * var(--font-scale))/1.62 'Cascadia Mono','Consolas',monospace}p code,li code,td code{padding:2px 5px;color:#dedede;background:#2a2a2a;border-radius:3px;white-space:normal}.tok-keyword{color:#c586c0}.tok-type{color:#4ec9b0}.tok-function{color:#dcdcaa}.tok-string{color:#ce9178}.tok-number{color:#b5cea8}.tok-comment{color:#6a9955}.tok-operator{color:#d4d4d4}
+            p{margin:0 0 14px}strong{font-weight:700;color:var(--strong)}em{color:var(--secondary)}ul,ol{margin:5px 0 18px;padding-left:24px}li{margin:4px 0;padding-left:2px}li>p{margin:0}
+            a{color:var(--primary);text-decoration:underline;text-decoration-color:var(--secondary)}.internal-link{color:var(--accent);font-weight:600;text-decoration:none}.internal-link:hover,a:hover{text-decoration:underline}mark{background:color-mix(in srgb,var(--accent) 28%,var(--card));color:var(--strong);padding:1px 3px;border-radius:2px}
+            blockquote{margin:18px 0;padding:10px 15px;border-left:3px solid var(--secondary);color:var(--secondary);background:var(--card);border-radius:0 5px 5px 0}blockquote>:last-child{margin-bottom:0}hr{border:0;border-top:1px solid var(--border);margin:28px 0}
+            table{border-collapse:collapse;width:max-content;max-width:100%;margin:18px 0 24px;font-size:calc(9.8px * var(--font-scale))}thead{border-bottom:1px solid var(--border)}th,td{padding:9px 10px;text-align:left;vertical-align:top;border-bottom:1px solid var(--border)}th{color:var(--strong);font-weight:700;background:var(--card)}tbody tr:hover{background:var(--hover)}
+            pre{position:relative;overflow:auto;margin:18px 0 22px;padding:25px 18px 17px;background:var(--app);border:1px solid var(--border);border-radius:8px;white-space:pre-wrap;word-break:normal}pre::before{content:attr(data-language);position:absolute;top:6px;right:9px;color:var(--placeholder);font:calc(7.7px * var(--font-scale))/1 'Cascadia Mono','Consolas',monospace;letter-spacing:.06em}code{font:calc(9.1px * var(--font-scale))/1.62 'Cascadia Mono','Consolas',monospace}p code,li code,td code{padding:2px 5px;color:var(--primary);background:var(--hover);border-radius:3px;white-space:normal}.tok-keyword{color:{{syntaxKeyword}}}.tok-type{color:{{syntaxType}}}.tok-function{color:{{syntaxFunction}}}.tok-string{color:{{syntaxString}}}.tok-number{color:{{syntaxNumber}}}.tok-comment{color:{{syntaxComment}};font-style:italic;opacity:.82}.tok-operator{color:var(--primary)}
             .math{max-width:100%;overflow-x:auto;overflow-y:hidden}.katex-display{margin:18px 0;overflow-x:auto;overflow-y:hidden;padding:3px 0}.katex{font-size:1.05em}
-            .task-list-item{list-style:none}.task-list-item input{width:14px;height:14px;margin:0 8px 0 -22px;accent-color:var(--accent)}.callout{display:block;margin:18px 0;padding:13px 15px;border:1px solid #3a3a3a;border-left:4px solid #707070;border-radius:6px;background:#252526}.callout-title,.callout summary{font-weight:700;color:#d4d4d4}.callout-content>:last-child{margin-bottom:0}
-            .note-embed{margin:18px 0;padding:14px 16px;border:1px solid #303030;border-radius:6px;background:#252526}.note-embed>header{margin-bottom:10px;color:var(--accent);font-weight:700}.internal-image{display:block;max-width:100%;height:auto;margin:18px auto;border-radius:6px}.missing-embed{color:#d0a36a}.footnotes{font-size:calc(9.1px * var(--font-scale));color:#969696}
-            .fold-tools{position:sticky;top:0;z-index:10;display:flex;justify-content:flex-end;gap:6px;margin:0 0 14px;padding:7px 0;background:rgba(30,30,30,.94);backdrop-filter:blur(8px)}
-            .fold-tools button{appearance:none;border:1px solid #303030;border-radius:4px;background:#252526;color:#d4d4d4;padding:5px 9px;font:calc(8.4px * var(--font-scale)) 'Segoe UI Variable Text','Segoe UI',sans-serif;cursor:pointer}.fold-tools button:hover{background:#333}
-            .md-section{margin:0;border-bottom:1px solid #303030}.md-section>.md-summary{display:flex;align-items:flex-start;gap:8px;padding:2px 0;list-style:none;cursor:pointer;user-select:none}.md-section>.md-summary::-webkit-details-marker{display:none}.md-section>.md-summary::before{content:'›';flex:0 0 13px;margin-top:7px;color:#969696;font-size:12.6px;line-height:1;transition:transform .14s ease}.md-section[open]>.md-summary::before{transform:rotate(90deg)}
+            .task-list-item{list-style:none}.task-list-item input{width:14px;height:14px;margin:0 8px 0 -22px;accent-color:var(--accent)}.callout{display:block;margin:18px 0;padding:13px 15px;border:1px solid var(--border);border-left:4px solid var(--secondary);border-radius:6px;background:var(--card)}.callout-title,.callout summary{font-weight:700;color:var(--primary)}.callout-content>:last-child{margin-bottom:0}
+            .note-embed{margin:18px 0;padding:14px 16px;border:1px solid var(--border);border-radius:6px;background:var(--card)}.note-embed>header{margin-bottom:10px;color:var(--accent);font-weight:700}.internal-image{display:block;max-width:100%;height:auto;margin:18px auto;border-radius:6px}.missing-embed{color:#B47835}.footnotes{font-size:calc(9.1px * var(--font-scale));color:var(--secondary)}
+            .fold-tools{position:sticky;top:0;z-index:10;display:flex;justify-content:flex-end;gap:6px;margin:0 0 14px;padding:7px 0;background:var(--page);backdrop-filter:blur(8px)}
+            .fold-tools button{appearance:none;border:1px solid var(--border);border-radius:4px;background:var(--card);color:var(--primary);padding:5px 9px;font:calc(8.4px * var(--font-scale)) 'Segoe UI Variable Text','Segoe UI',sans-serif;cursor:pointer}.fold-tools button:hover{background:var(--pressed)}
+            .md-section{margin:0;border-bottom:1px solid var(--border)}.md-section>.md-summary{display:flex;align-items:flex-start;gap:8px;padding:2px 0;list-style:none;cursor:pointer;user-select:none}.md-section>.md-summary::-webkit-details-marker{display:none}.md-section>.md-summary::before{content:'›';flex:0 0 13px;margin-top:7px;color:var(--secondary);font-size:12.6px;line-height:1;transition:transform .14s ease}.md-section[open]>.md-summary::before{transform:rotate(90deg)}
             .md-section>.md-summary>h1,.md-section>.md-summary>h2,.md-section>.md-summary>h3,.md-section>.md-summary>h4,.md-section>.md-summary>h5,.md-section>.md-summary>h6{flex:1;margin:0;padding:7px 0;border:0}.md-section[data-level='1']>.md-summary>h1{font-size:calc(13.3px * var(--font-scale))}.md-section[data-level='2']>.md-summary>h2{font-size:calc(11.9px * var(--font-scale))}.md-section[data-level='3']>.md-summary>h3{font-size:calc(10.5px * var(--font-scale))}.md-section[data-level='4']>.md-summary>h4{font-size:calc(9.8px * var(--font-scale))}.md-section[data-level='5']>.md-summary>h5{font-size:calc(9.1px * var(--font-scale))}.md-section[data-level='6']>.md-summary>h6{font-size:calc(8.4px * var(--font-scale))}
-            .md-section>.md-section-body{padding:11px 0 15px 21px}.md-section>.md-section-body>.md-section{border-bottom:0;border-top:1px solid #2a2a2a}.md-section>.md-section-body>:last-child{margin-bottom:0}
+            .md-section>.md-section-body{padding:11px 0 15px 21px}.md-section>.md-section-body>.md-section{border-bottom:0;border-top:1px solid var(--border)}.md-section>.md-section-body>:last-child{margin-bottom:0}
             .source-hover{outline:1px solid color-mix(in srgb,var(--accent) 45%,transparent);outline-offset:3px;border-radius:3px;cursor:text}
             @media(max-width:700px){body{padding:18px 20px 56px}table{font-size:calc(8.4px * var(--font-scale))}th,td{padding:7px 6px}.md-section>.md-section-body{padding-left:17px} }
           </style>
@@ -310,6 +333,16 @@ public static class MarkdownPreviewRenderer
                 event.stopPropagation();
                 window.chrome.webview.postMessage({ type: 'focus-editor', offset });
               });
+              const elementOf = node => node instanceof Element ? node : node?.parentElement;
+              document.addEventListener('copy', event => {
+                const selection = window.getSelection();
+                if (!selection || selection.isCollapsed) return;
+                const startPre = elementOf(selection.anchorNode)?.closest('pre');
+                const endPre = elementOf(selection.focusNode)?.closest('pre');
+                if (!startPre || startPre !== endPre) return;
+                event.preventDefault();
+                event.clipboardData.setData('text/plain', selection.toString());
+              });
               if (sectionCount) {
                 const tools = document.createElement('nav');
                 tools.className = 'fold-tools';
@@ -359,4 +392,26 @@ public static class MarkdownPreviewRenderer
         </html>
         """;
     }
+
+    private sealed record CssSurface(
+        bool IsLight,
+        string AppBackground,
+        string DocumentBackground,
+        string CardBackground,
+        string Border,
+        string PrimaryText,
+        string SecondaryText,
+        string PlaceholderText,
+        string HoverBackground,
+        string PressedBackground,
+        string ScrollThumb,
+        string ScrollThumbHover,
+        string ScrollThumbPressed);
+
+    private static CssSurface CssSurfaceFor(string? key) => key?.ToLowerInvariant() switch
+    {
+        "light" => new(true, "#F3F3F3", "#FFFFFF", "#F5F5F5", "#D8D8D8", "#252525", "#686868", "#7A7A7A", "#EAEAEA", "#E0E0E0", "#A8A8A8", "#8E8E8E", "#777777"),
+        "midnight" => new(false, "#0F1115", "#12151A", "#1B1F26", "#2A3039", "#D9DDE5", "#929AA7", "#7F8793", "#20252D", "#292F39", "#4B5563", "#667180", "#788493"),
+        _ => new(false, "#181818", "#1E1E1E", "#252526", "#303030", "#D4D4D4", "#969696", "#858585", "#282828", "#333333", "#555555", "#707070", "#808080")
+    };
 }

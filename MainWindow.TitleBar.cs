@@ -15,16 +15,26 @@ public sealed partial class MainWindow
 
         var titleBar = AppWindow.TitleBar;
         titleBar.PreferredHeightOption = TitleBarHeightOption.Tall;
-        titleBar.ButtonBackgroundColor = Colors.Transparent;
-        titleBar.ButtonInactiveBackgroundColor = Colors.Transparent;
-        titleBar.ButtonForegroundColor = ColorHelper.FromArgb(255, 205, 213, 226);
-        titleBar.ButtonInactiveForegroundColor = ColorHelper.FromArgb(255, 116, 129, 151);
-        titleBar.ButtonHoverBackgroundColor = ColorHelper.FromArgb(255, 28, 40, 59);
-        titleBar.ButtonHoverForegroundColor = Colors.White;
-        titleBar.ButtonPressedBackgroundColor = ColorHelper.FromArgb(255, 43, 58, 82);
-        titleBar.ButtonPressedForegroundColor = Colors.White;
+        ApplyTitleBarAppearance(CurrentSurface);
         AppTitleBar.SizeChanged += (_, _) => UpdateCaptionButtonSpacing();
         UpdateCaptionButtonSpacing();
+    }
+
+    private void ApplyTitleBarAppearance(SurfacePalette surface)
+    {
+        if (!AppWindowTitleBar.IsCustomizationSupported()) return;
+
+        var titleBar = AppWindow.TitleBar;
+        titleBar.ButtonBackgroundColor = Colors.Transparent;
+        titleBar.ButtonInactiveBackgroundColor = Colors.Transparent;
+        titleBar.ButtonForegroundColor = surface.PrimaryText;
+        titleBar.ButtonInactiveForegroundColor = surface.SecondaryText;
+        titleBar.ButtonHoverBackgroundColor = surface.HoverBackground;
+        titleBar.ButtonHoverForegroundColor = surface.PrimaryText;
+        titleBar.ButtonPressedBackgroundColor = surface.PressedBackground;
+        titleBar.ButtonPressedForegroundColor = surface.PrimaryText;
+        titleBar.BackgroundColor = surface.AppBackground;
+        titleBar.InactiveBackgroundColor = surface.AppBackground;
     }
 
     private void UpdateCaptionButtonSpacing()

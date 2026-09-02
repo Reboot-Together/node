@@ -7,9 +7,10 @@ public sealed record UiLayoutSettings(
     bool ExplorerCollapsed,
     double InspectorWidth = 348,
     double FontScale = 1,
-    string AccentTheme = "gold")
+    string AccentTheme = "gold",
+    string SurfaceTheme = "dark")
 {
-    public static UiLayoutSettings Default { get; } = new(.68, false, 348, 1, "gold");
+    public static UiLayoutSettings Default { get; } = new(.68, false, 348, 1, "gold", "dark");
 }
 
 public sealed class UiLayoutSettingsService
@@ -50,6 +51,11 @@ public sealed class UiLayoutSettingsService
                 settings.AccentTheme,
                 StringComparer.OrdinalIgnoreCase)
                     ? settings.AccentTheme.ToLowerInvariant()
-                    : "gold"
+                    : "gold",
+            SurfaceTheme = new[] { "dark", "light", "midnight" }.Contains(
+                settings.SurfaceTheme,
+                StringComparer.OrdinalIgnoreCase)
+                    ? settings.SurfaceTheme.ToLowerInvariant()
+                    : "dark"
         };
 }

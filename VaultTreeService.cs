@@ -63,7 +63,12 @@ public sealed class VaultTreeService
                 group => group.OrderBy(path => Path.GetFileName(path), NameComparer).ToList(),
                 StringComparer.OrdinalIgnoreCase);
         var result = new List<VaultItem>();
-        AddFolder(result, root, root, notesByDirectory, childFolders, expandedFolders, 0, true, normalizedQuery.Length > 0);
+        if (childFolders.TryGetValue(root, out var rootFolders))
+            foreach (var folder in rootFolders)
+                AddFolder(result, root, folder, notesByDirectory, childFolders, expandedFolders, 0, false, normalizedQuery.Length > 0);
+        if (notesByDirectory.TryGetValue(root, out var rootNotes))
+            foreach (var note in rootNotes)
+                result.Add(new VaultItem(note.Title, note.Path, false, false, false, 0, note));
         return result;
     }
 

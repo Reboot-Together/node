@@ -18,6 +18,8 @@ public sealed partial class MainWindow
     private readonly GraphLabelLayoutService _graphLabelLayoutService = new();
     private double _graphZoom = .72;
     private Dictionary<string, GraphPoint> _graphPoints = new(StringComparer.OrdinalIgnoreCase);
+    private IReadOnlyDictionary<string, int> _graphRelationshipDepths =
+        new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
     private GraphLayout? _activeGraphLayout;
     private readonly List<UIElement> _graphLabelElements = [];
     private string? _hoveredGraphTitle;
@@ -95,7 +97,7 @@ public sealed partial class MainWindow
 
         var selectedTitle = _selected?.Title;
         var graphLinks = MergeGraphLinks(_noteLinks, _semanticLinks, notes.Select(note => note.Title));
-        var relationshipDepths = GraphLayoutService.RelationshipDepths(selectedTitle, graphLinks, 2);
+        _graphRelationshipDepths = GraphLayoutService.RelationshipDepths(selectedTitle, graphLinks, 2);
         var layout = _graphLayoutService.Calculate(
             notes,
             graphLinks,
@@ -118,8 +120,8 @@ public sealed partial class MainWindow
                 var explicitLink = HasGraphEdge(_noteLinks, source, target);
                 var direct = source.Equals(selectedTitle, StringComparison.OrdinalIgnoreCase)
                     || target.Equals(selectedTitle, StringComparison.OrdinalIgnoreCase);
-                var withinConstellation = relationshipDepths.TryGetValue(source, out var sourceDepth)
-                    && relationshipDepths.TryGetValue(target, out var targetDepth)
+                var withinConstellation = _graphRelationshipDepths.TryGetValue(source, out var sourceDepth)
+                    && _graphRelationshipDepths.TryGetValue(target, out var targetDepth)
                     && sourceDepth <= 2
                     && targetDepth <= 2;
                 var emphasis = direct ? 1 : withinConstellation ? 2 : 0;
@@ -497,7 +499,9 @@ public sealed partial class MainWindow
         if (_activeGraphLayout is null || _graphPoints.Count == 0) return;
 
         var selectedTitle = _selected?.Title;
-        var focusTitle = _hoveredGraphTitle is not null && _graphPoints.ContainsKey(_hoveredGraphTitle)
+        var focusTitle = _hoveredGraphTitle is not null
+            && _graphPoints.ContainsKey(_hoveredGraphTitle)
+            && CanShowGraphLabel(_hoveredGraphTitle)
             ? _hoveredGraphTitle
             : selectedTitle;
         if (focusTitle is null || !_graphPoints.TryGetValue(focusTitle, out var focusPoint)) return;
@@ -513,7 +517,7 @@ public sealed partial class MainWindow
             AddCandidate(focusTitle, GraphLabelRole.Focus, 0);
 
         var orderedNeighbors = neighbors
-            .Where(_graphPoints.ContainsKey)
+            .Where(title => _graphPoints.ContainsKey(title) && CanShowGraphLabel(title))
             .OrderByDescending(title => _activeGraphLayout.Degrees.GetValueOrDefault(title))
             .ThenBy(title => title, StringComparer.OrdinalIgnoreCase)
             .ToList();
@@ -536,7 +540,8 @@ public sealed partial class MainWindow
         {
             foreach (var title in _graphPoints.Keys
                 .Where(title => !included.Contains(title)
-                    && !title.Equals(selectedTitle, StringComparison.OrdinalIgnoreCase))
+                    && !title.Equals(selectedTitle, StringComparison.OrdinalIgnoreCase)
+                    && CanShowGraphLabel(title))
                 .OrderByDescending(title => _activeGraphLayout.Degrees.GetValueOrDefault(title))
                 .ThenBy(title => title, StringComparer.OrdinalIgnoreCase))
                 AddCandidate(title, GraphLabelRole.Global, 4);
@@ -548,7 +553,9 @@ public sealed partial class MainWindow
 
         void AddCandidate(string title, GraphLabelRole role, int priority)
         {
-            if (!included.Add(title) || !_graphPoints.TryGetValue(title, out var point)) return;
+            if (!CanShowGraphLabel(title)
+                || !included.Add(title)
+                || !_graphPoints.TryGetValue(title, out var point)) return;
             var selected = title.Equals(selectedTitle, StringComparison.OrdinalIgnoreCase);
             var degree = _activeGraphLayout.Degrees.GetValueOrDefault(title);
             candidates.Add(new GraphLabelCandidate(
@@ -561,6 +568,9 @@ public sealed partial class MainWindow
                 role));
         }
     }
+
+    private bool CanShowGraphLabel(string title) =>
+        _selected is null || _graphRelationshipDepths.ContainsKey(title);
 
     private void AddFocusOrbit(GraphPoint focus, IReadOnlyList<string> neighbors, GraphLabelMode mode, bool hovering)
     {

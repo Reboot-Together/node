@@ -50,13 +50,14 @@ try
     var uiSettingsPath = Path.Combine(root, "ui-layout.json");
     var uiSettingsService = new UiLayoutSettingsService(uiSettingsPath);
     if (uiSettingsService.Load() != UiLayoutSettings.Default) throw new Exception("UI 배치 기본값 로드 실패");
-    uiSettingsService.Save(new UiLayoutSettings(.72, true, 420, 1.15, "blue"));
+    uiSettingsService.Save(new UiLayoutSettings(.72, true, 420, 1.15, "blue", "light"));
     var savedUiSettings = uiSettingsService.Load();
     if (Math.Abs(savedUiSettings.PreviewRatio - .72) > .001
         || !savedUiSettings.ExplorerCollapsed
         || Math.Abs(savedUiSettings.InspectorWidth - 420) > .001
         || Math.Abs(savedUiSettings.FontScale - 1.15) > .001
-        || savedUiSettings.AccentTheme != "blue")
+        || savedUiSettings.AccentTheme != "blue"
+        || savedUiSettings.SurfaceTheme != "light")
         throw new Exception("UI 배치와 모양 설정 저장 실패");
 
     var chunkNote = new NoteInfo(
@@ -142,7 +143,20 @@ try
     var cachedFolders = treeService.LoadFolders(root);
     var treeItems = treeService.Build(root, store.Load(), cachedFolders, new HashSet<string>([dropTarget], StringComparer.OrdinalIgnoreCase));
     if (!treeItems.Any(item => item.IsFolder && item.Path == dropTarget) || !treeItems.Any(item => item.Note?.Path == draggedNote.Path)) throw new Exception("저장소 폴더 트리 구성 실패");
+    if (treeItems.Any(item => item.IsRoot || item.Path.Equals(root, StringComparison.OrdinalIgnoreCase))
+        || treeItems.Where(item => item.Depth == 0).Any(item => item.IsRoot))
+        throw new Exception("탐색기 단일 저장소 루트 숨김 실패");
     if (treeItems.Any(item => item.IsFolder && item.FolderIconOpacity != 1) || treeItems.Any(item => !item.IsFolder && item.FolderIconOpacity != 0)) throw new Exception("폴더 아이콘 표시 구분 실패");
+    var collapsedFolderMarker = new VaultItem("folder", Path.Combine(root, "folder"), true, false, false, 2, null);
+    var expandedFolderMarker = collapsedFolderMarker with { IsExpanded = true };
+    var noteMarker = new VaultItem("note", Path.Combine(root, "note.md"), false, false, false, 2, null);
+    if (collapsedFolderMarker.Indent != 28
+        || collapsedFolderMarker.CollapsedChevronOpacity != 1
+        || expandedFolderMarker.ExpandedChevronOpacity != 1
+        || noteMarker.NoteDotOpacity != 1
+        || noteMarker.CollapsedChevronOpacity != 0
+        || noteMarker.ExpandedChevronOpacity != 0)
+        throw new Exception("탐색기 계층 표시 벡터 정렬 상태 실패");
     var nestedNote = store.CreateInFolder(Path.Combine(movedFolder, "새 폴더"), "깊은 노트");
     var ancestors = treeService.AncestorFolders(root, nestedNote.Path);
     if (!ancestors.SequenceEqual([Path.GetDirectoryName(nestedNote.Path)!, movedFolder, dropTarget, root], StringComparer.OrdinalIgnoreCase)) throw new Exception("선택 노트의 상위 폴더 경로 계산 실패");
@@ -154,7 +168,7 @@ try
     sortStore.Create("10 노트");
     sortStore.Create("2 노트");
     var sortedItems = treeService.Build(sortRoot, sortStore.Load(), treeService.LoadFolders(sortRoot), new HashSet<string>(StringComparer.OrdinalIgnoreCase));
-    if (!sortedItems.Skip(1).Select(item => item.Name).SequenceEqual(["2 폴더", "10 폴더", "2 노트", "10 노트"])) throw new Exception("폴더 우선 이름 자연 정렬 실패");
+    if (!sortedItems.Select(item => item.Name).SequenceEqual(["2 폴더", "10 폴더", "2 노트", "10 노트"])) throw new Exception("폴더 우선 이름 자연 정렬 실패");
     var networkNotes = store.Load();
     var graphLinks = linkService.Build(networkNotes);
     var graphService = new GraphLayoutService();
@@ -271,6 +285,15 @@ try
         || !highlightedCode.Contains("tok-comment\"># comment")
         || !highlightedCode.Contains("tok-string\">&quot;hello&quot;"))
         throw new Exception("오프라인 코드 문법 강조 실패");
+    if (!highlightedCode.Contains("event.clipboardData.setData('text/plain', selection.toString())"))
+        throw new Exception("코드 블록 주석 포함 순수 텍스트 복사 연결 실패");
+    if (!highlightedCode.Contains(".tok-comment{color:#6A9955;font-style:italic;opacity:.82}"))
+        throw new Exception("코드 주석 시각적 구분 스타일 실패");
+    var lightCode = MarkdownPreviewRenderer.Render("```python\n# light comment\n```", root, surfaceTheme: "light");
+    if (!lightCode.Contains("color-scheme:light")
+        || !lightCode.Contains("--page:#FFFFFF")
+        || !lightCode.Contains(".tok-comment{color:#008000"))
+        throw new Exception("라이트 미리보기 테마 적용 실패");
 
     var confusionMatrix = MarkdownPreviewRenderer.Render("""
 ## 주요 평가 지표
@@ -330,7 +353,7 @@ Recall = TP / (TP + FN)
     var sectionRender = MarkdownPreviewRenderer.Render(sectionMarkdown, root);
     if (!sectionRender.Contains("data-level='1']>.md-summary>h1{font-size:calc(13.3px * var(--font-scale))") || sectionRender.Contains("font-size:19px")) throw new Exception("노트 제목보다 작은 본문 1단계 제목 크기 적용 실패");
     var themedRender = MarkdownPreviewRenderer.Render(sectionMarkdown, root, initialScrollY: 0, fontScale: 1.2, accentColor: "#6CB6FF");
-    if (!themedRender.Contains(":root{--font-scale:1.2;--accent:#6CB6FF}")
+    if (!themedRender.Contains(":root{--font-scale:1.2;--accent:#6CB6FF;")
         || !themedRender.Contains("color:var(--accent)"))
         throw new Exception("미리보기 글자 크기와 강조색 설정 적용 실패");
     if (!sectionRender.Contains("document.addEventListener('click'")
@@ -381,6 +404,14 @@ Recall = TP / (TP + FN)
     folderExpansionService.ExpandExclusive(expansionRoot, explorerFolders, expandedFolders, expansionFolders[4]);
     if (!expandedFolders.Contains(expansionFolders[4]) || expandedFolders.Contains(expansionFolders[3]))
         throw new Exception("탐색기 하위 폴더 독립 그룹 처리 실패");
+    expandedFolders.Add(expansionFolders[3]);
+    folderExpansionService.EnforceExclusive(
+        expansionRoot,
+        explorerFolders,
+        expandedFolders,
+        [expansionFolders[4]]);
+    if (!expandedFolders.Contains(expansionFolders[4]) || expandedFolders.Contains(expansionFolders[3]))
+        throw new Exception("탐색기 중복 펼침 상태 자동 복구 실패");
 
     var guideService = new BuiltInGuideService();
     var guideItems = guideService.BuildItems(
@@ -388,6 +419,8 @@ Recall = TP / (TP + FN)
         null);
     if (guideItems.Count < 5
         || guideItems[0] is not { IsFolder: true, IsVirtual: true }
+        || guideItems[0].Depth != 0
+        || guideItems.Skip(1).Any(item => item.Depth != 1)
         || guideItems.Skip(1).Any(item => item.Note is not { IsReadOnly: true })
         || guideService.FindByTitle("마크다운 사용법") is null)
         throw new Exception("읽기 전용 Asterism 안내 문서 구성 실패");
@@ -405,7 +438,7 @@ Recall = TP / (TP + FN)
         || !rememberedScrollRender.Contains("document.documentElement.scrollHeight - window.innerHeight")
         || !rememberedScrollRender.Contains("y: window.scrollY, maxY")
         || !rememberedScrollRender.Contains("*::-webkit-scrollbar{width:8px;height:8px}")
-        || !rememberedScrollRender.Contains("scrollbar-color:#555 transparent"))
+        || !rememberedScrollRender.Contains("scrollbar-color:#555555 transparent"))
         throw new Exception("미리보기 갱신 시 스크롤 위치 복원 실패");
 
     var mathRender = MarkdownPreviewRenderer.Render("인라인 $\\sum_{i=1}^{n} x_i$\n\n$$\n\\frac{1}{n} \\sum_{i=1}^{n} x_i\n$$", root);

@@ -26,6 +26,7 @@ public sealed partial class SideDocumentPane : UserControl
     private double _previewScrollY;
     private double _fontScale;
     private string _accentColor;
+    private string _surfaceTheme;
     private ScrollViewer? _editorScrollViewer;
 
     public SideDocumentPane(
@@ -34,7 +35,8 @@ public sealed partial class SideDocumentPane : UserControl
         Func<string, NoteInfo?> resolveNote,
         Func<NoteInfo, string, string, NoteInfo> saveNote,
         double fontScale,
-        string accentColor)
+        string accentColor,
+        string surfaceTheme)
     {
         _note = note;
         _workspaceRoot = workspaceRoot;
@@ -42,7 +44,9 @@ public sealed partial class SideDocumentPane : UserControl
         _saveNote = saveNote;
         _fontScale = fontScale;
         _accentColor = accentColor;
+        _surfaceTheme = surfaceTheme;
         InitializeComponent();
+        ApplySurfacePalette();
 
         _saveTimer = DispatcherQueue.CreateTimer();
         _saveTimer.Interval = TimeSpan.FromMilliseconds(700);
@@ -102,15 +106,38 @@ public sealed partial class SideDocumentPane : UserControl
         RenderPreview();
     }
 
-    public void RefreshAppearance(double fontScale, string accentColor)
+    public void RefreshAppearance(double fontScale, string accentColor, string surfaceTheme)
     {
         _fontScale = fontScale;
         _accentColor = accentColor;
+        _surfaceTheme = surfaceTheme;
         if (Editor.Resources["TextControlSelectionHighlightColor"] is SolidColorBrush selection)
             selection.Color = AppearanceThemes.All.FirstOrDefault(theme =>
                 theme.CssColor.Equals(accentColor, StringComparison.OrdinalIgnoreCase))?.Surface
                 ?? AppearanceThemes.All[0].Surface;
+        ApplySurfacePalette();
         RenderPreview();
+    }
+
+    private void ApplySurfacePalette()
+    {
+        var surface = SurfaceThemes.Get(_surfaceTheme);
+        RequestedTheme = surface.IsLight ? ElementTheme.Light : ElementTheme.Dark;
+        Editor.Background = new SolidColorBrush(surface.DocumentBackground);
+        Editor.Foreground = new SolidColorBrush(surface.PrimaryText);
+        Editor.PlaceholderForeground = new SolidColorBrush(surface.PlaceholderText);
+        Preview.DefaultBackgroundColor = surface.DocumentBackground;
+        SetEditorBrush("TextControlBackground", surface.DocumentBackground);
+        SetEditorBrush("TextControlBackgroundPointerOver", surface.DocumentBackground);
+        SetEditorBrush("TextControlBackgroundFocused", surface.DocumentBackground);
+        SetEditorBrush("ScrollBarThumbBackground", surface.ScrollThumb);
+        SetEditorBrush("ScrollBarThumbBackgroundPointerOver", surface.ScrollThumbHover);
+        SetEditorBrush("ScrollBarThumbBackgroundPressed", surface.ScrollThumbPressed);
+    }
+
+    private void SetEditorBrush(string key, Windows.UI.Color color)
+    {
+        if (Editor.Resources[key] is SolidColorBrush brush) brush.Color = color;
     }
 
     public void SaveNow()
@@ -171,7 +198,8 @@ public sealed partial class SideDocumentPane : UserControl
             _foldStates,
             _previewScrollY,
             _fontScale,
-            _accentColor));
+            _accentColor,
+            _surfaceTheme));
     }
 
     private void Preview_WebMessageReceived(CoreWebView2 sender, CoreWebView2WebMessageReceivedEventArgs args)
