@@ -15,6 +15,7 @@
     <Compile Include="..\NoteLinkService.cs" Link="NoteLinkService.cs" />
     <Compile Include="..\GraphLayoutService.cs" Link="GraphLayoutService.cs" />
     <Compile Include="..\GraphViewportService.cs" Link="GraphViewportService.cs" />
+    <Compile Include="..\GraphFieldStarService.cs" Link="GraphFieldStarService.cs" />
     <Compile Include="..\GraphLabelLayoutService.cs" Link="GraphLabelLayoutService.cs" />
     <Compile Include="..\VaultTreeService.cs" Link="VaultTreeService.cs" />
     <Compile Include="..\UpdateService.cs" Link="UpdateService.cs" />

@@ -134,13 +134,16 @@ public sealed partial class MainWindow
         GraphCanvas.Children.Clear();
         _graphEdgeVisuals.Clear();
         _graphLabelElements.Clear();
-        AddConstellationField(GraphCanvas.Width, GraphCanvas.Height);
 
         var notes = _notes
             .GroupBy(note => note.Title, StringComparer.OrdinalIgnoreCase)
             .Select(group => group.First())
             .ToList();
-        if (notes.Count == 0) return;
+        if (notes.Count == 0)
+        {
+            AddConstellationField(GraphCanvas.Width, GraphCanvas.Height);
+            return;
+        }
 
         var selectedTitle = _selected?.Title;
         var graphLinks = MergeGraphLinks(_noteLinks, _semanticLinks, notes.Select(note => note.Title));
@@ -156,6 +159,7 @@ public sealed partial class MainWindow
             pair => pair.Key,
             pair => ScaleGraphPoint(pair.Value),
             StringComparer.OrdinalIgnoreCase);
+        AddConstellationField(GraphCanvas.Width, GraphCanvas.Height);
         var visualScale = GraphViewportService.VisualScale(_graphZoom);
 
         foreach (var (source, targets) in layout.Links)
@@ -194,13 +198,16 @@ public sealed partial class MainWindow
             }
         }
 
+        var maximumBodyLength = Math.Max(1, notes.Max(note => note.Body.Length));
         foreach (var note in notes)
         {
             var point = _graphPoints[note.Title];
             var selected = note.Title.Equals(selectedTitle, StringComparison.OrdinalIgnoreCase);
-            var radius = GraphViewportService.NodeRadius(_graphZoom, selected, layout.Degrees[note.Title]);
+            var degree = layout.Degrees[note.Title];
+            var radius = GraphViewportService.NodeRadius(_graphZoom, selected, degree);
+            var alpha = GraphViewportService.NodeAlpha(note.Body.Length, maximumBodyLength, degree, selected);
 
-            AddStar(point, radius, StarColor(note), note, selected);
+            AddStar(point, radius, StarColor(note, alpha), note, selected);
         }
 
         if (_hoveredGraphTitle is not null && !_graphPoints.ContainsKey(_hoveredGraphTitle))
@@ -361,81 +368,22 @@ public sealed partial class MainWindow
 
     private void AddConstellationField(double width, double height)
     {
-        var centerX = width / 2;
-        var centerY = height / 2;
-        var outerRadius = Math.Max(80, Math.Min(width, height) / 2 - 42);
-        var gridBrush = new SolidColorBrush(ColorHelper.FromArgb(28, 145, 145, 145));
-        foreach (var scale in new[] { 1d, .78, .56, .34 })
+        var fieldStars = GraphFieldStarService.Generate(width, height, _graphZoom);
+        for (var index = 0; index < fieldStars.Count; index++)
         {
-            var ring = new Ellipse
-            {
-                Width = outerRadius * 2 * scale,
-                Height = outerRadius * 2 * scale,
-                Stroke = gridBrush,
-                StrokeThickness = scale == 1 ? 1.1 : .7,
-                IsHitTestVisible = false
-            };
-            Canvas.SetLeft(ring, centerX - ring.Width / 2);
-            Canvas.SetTop(ring, centerY - ring.Height / 2);
-            GraphCanvas.Children.Add(ring);
-        }
-
-        for (var index = 0; index < 16; index++)
-        {
-            var angle = Math.PI * 2 * index / 16;
-            var spoke = new Line
-            {
-                X1 = centerX,
-                Y1 = centerY,
-                X2 = centerX + Math.Cos(angle) * outerRadius,
-                Y2 = centerY + Math.Sin(angle) * outerRadius,
-                Stroke = new SolidColorBrush(ColorHelper.FromArgb(17, 145, 145, 145)),
-                StrokeThickness = .65,
-                IsHitTestVisible = false
-            };
-            GraphCanvas.Children.Add(spoke);
-        }
-
-        if (_graphZoom >= .4)
-        {
-            foreach (var (text, x, y) in new[]
-            {
-                ("N", centerX, centerY - outerRadius + 13),
-                ("E", centerX + outerRadius - 13, centerY),
-                ("S", centerX, centerY + outerRadius - 17),
-                ("W", centerX - outerRadius + 9, centerY)
-            })
-            {
-                var marker = new TextBlock
-                {
-                    Text = text,
-                    FontFamily = new FontFamily("Cascadia Mono"),
-                    FontSize = 8,
-                    Foreground = new SolidColorBrush(ColorHelper.FromArgb(155, 155, 155, 155)),
-                    IsHitTestVisible = false
-                };
-                Canvas.SetLeft(marker, x - 3);
-                Canvas.SetTop(marker, y - 6);
-                GraphCanvas.Children.Add(marker);
-            }
-        }
-
-        var fieldStarCount = Math.Clamp((int)(40 + 50 * _graphZoom), 45, 150);
-        for (var index = 0; index < fieldStarCount; index++)
-        {
-            var radius = index % 17 == 0 ? 1.25 : index % 7 == 0 ? .8 : .45;
-            var alpha = index % 17 == 0 ? (byte)150 : (byte)72;
+            var fieldStar = fieldStars[index];
             var star = new Ellipse
             {
-                Width = radius * 2,
-                Height = radius * 2,
-                Fill = new SolidColorBrush(FieldStarColor(index, alpha)),
+                Width = fieldStar.Radius * 2,
+                Height = fieldStar.Radius * 2,
+                Fill = new SolidColorBrush(FieldStarColor(fieldStar.PaletteIndex, fieldStar.Alpha)),
                 IsHitTestVisible = false
             };
-            Canvas.SetLeft(star, 24 + (index * 223 % Math.Max(1, (int)width - 48)));
-            Canvas.SetTop(star, 20 + (index * 137 % Math.Max(1, (int)height - 40)));
+            Canvas.SetLeft(star, fieldStar.Position.X - fieldStar.Radius);
+            Canvas.SetTop(star, fieldStar.Position.Y - fieldStar.Radius);
             GraphCanvas.Children.Add(star);
-            StartGraphTwinkle(star, $"field:{index}", index % 17 == 0 ? .35 : .16);
+            if (fieldStar.Twinkles)
+                StartGraphTwinkle(star, $"field:{index}", fieldStar.MinimumOpacity);
         }
     }
 
@@ -646,7 +594,7 @@ public sealed partial class MainWindow
 
     private void AddFocusOrbit(GraphPoint focus, IReadOnlyList<string> neighbors, GraphLabelMode mode, bool hovering)
     {
-        if (neighbors.Count < 2 || mode == GraphLabelMode.FocusOnly || mode == GraphLabelMode.Detail && !hovering) return;
+        if (!hovering || neighbors.Count < 2 || mode == GraphLabelMode.FocusOnly) return;
         var distances = neighbors
             .Where(_graphPoints.ContainsKey)
             .Select(title =>
@@ -731,14 +679,14 @@ public sealed partial class MainWindow
         return neighbors;
     }
 
-    private static Windows.UI.Color StarColor(NoteInfo note) => StablePaletteIndex(note.Title) switch
+    private static Windows.UI.Color StarColor(NoteInfo note, byte alpha) => StablePaletteIndex(note.Title) switch
     {
-        0 => ColorHelper.FromArgb(255, 220, 223, 228), // cool white
-        1 => ColorHelper.FromArgb(255, 216, 225, 232), // pale blue
-        2 => ColorHelper.FromArgb(255, 229, 223, 213), // soft ivory
-        3 => ColorHelper.FromArgb(255, 217, 227, 221), // pale mint
-        4 => ColorHelper.FromArgb(255, 228, 219, 223), // muted rose
-        _ => ColorHelper.FromArgb(255, 224, 221, 231)  // pale lavender
+        0 => ColorHelper.FromArgb(alpha, 220, 223, 228), // cool white
+        1 => ColorHelper.FromArgb(alpha, 216, 225, 232), // pale blue
+        2 => ColorHelper.FromArgb(alpha, 229, 223, 213), // soft ivory
+        3 => ColorHelper.FromArgb(alpha, 217, 227, 221), // pale mint
+        4 => ColorHelper.FromArgb(alpha, 228, 219, 223), // muted rose
+        _ => ColorHelper.FromArgb(alpha, 224, 221, 231)  // pale lavender
     };
 
     private static Windows.UI.Color FieldStarColor(int index, byte alpha) => (index % 4) switch

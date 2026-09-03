@@ -185,14 +185,15 @@ public sealed class GraphLayoutService
         var parents = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
         if (!points.ContainsKey(selectedTitle)) return parents;
 
-        var depths = RelationshipDepths(selectedTitle, links, 2);
-        var firstRing = depths
+        var localDepths = RelationshipDepths(selectedTitle, links, 2);
+        var allDepths = RelationshipDepths(selectedTitle, links, Math.Max(2, points.Count));
+        var firstRing = localDepths
             .Where(pair => pair.Value == 1 && points.ContainsKey(pair.Key))
             .Select(pair => pair.Key)
             .OrderBy(StableSeed)
             .ThenBy(title => title, StringComparer.OrdinalIgnoreCase)
             .ToList();
-        var secondRing = depths
+        var secondRing = localDepths
             .Where(pair => pair.Value == 2 && points.ContainsKey(pair.Key))
             .Select(pair => pair.Key)
             .OrderBy(StableSeed)
@@ -233,8 +234,11 @@ public sealed class GraphLayoutService
         foreach (var parent in firstRing)
         {
             var sectorSpan = Math.PI * 2 * weights[parent] / totalWeight;
-            var parentAngle = sectorStart + sectorSpan / 2;
-            points[parent] = Polar(focus, innerRadius, parentAngle);
+            var parentAngle = sectorStart + sectorSpan / 2
+                + SignedVariation($"{selectedTitle}\u001f{parent}\u001fangle") * Math.Min(.08, sectorSpan * .08);
+            var parentRadius = innerRadius
+                * (1 + SignedVariation($"{selectedTitle}\u001f{parent}\u001fradius") * .1);
+            points[parent] = Polar(focus, parentRadius, parentAngle);
 
             var group = children[parent]
                 .OrderBy(StableSeed)
@@ -245,16 +249,19 @@ public sealed class GraphLayoutService
             {
                 var fraction = group.Count == 1 ? .5 : (index + .5) / group.Count;
                 var angle = parentAngle - usableSpan / 2 + usableSpan * fraction;
-                var radiusJitter = ((StableSeed(group[index]) & 255) / 255d - .5) * 14;
-                points[group[index]] = Polar(focus, outerRadius + radiusJitter, angle);
+                var radiusScale = 1
+                    + SignedVariation($"{selectedTitle}\u001f{group[index]}\u001fradius") * .18;
+                points[group[index]] = Polar(focus, outerRadius * radiusScale, angle);
             }
             sectorStart += sectorSpan;
         }
 
+        ArrangeDeepSpace(points, links, allDepths, focus, outerRadius, width, height);
+
         var backgroundMinimumRadius = Math.Min(
             minimumDimension / 2 - 42,
             outerRadius + 72);
-        foreach (var title in points.Keys.Where(title => !depths.ContainsKey(title)).ToList())
+        foreach (var title in points.Keys.Where(title => !allDepths.ContainsKey(title)).ToList())
         {
             var point = points[title];
             var dx = point.X - focus.X;
@@ -275,6 +282,75 @@ public sealed class GraphLayoutService
         return parents;
     }
 
+    private static void ArrangeDeepSpace(
+        IDictionary<string, GraphPoint> points,
+        IReadOnlyDictionary<string, List<string>> links,
+        IReadOnlyDictionary<string, int> depths,
+        GraphPoint focus,
+        double outerRadius,
+        double width,
+        double height)
+    {
+        var deepTitles = depths
+            .Where(pair => pair.Value >= 3 && points.ContainsKey(pair.Key))
+            .OrderBy(pair => pair.Value)
+            .ThenBy(pair => StableSeed(pair.Key))
+            .Select(pair => pair.Key)
+            .ToList();
+        if (deepTitles.Count == 0) return;
+
+        var deepParents = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        var childCounts = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+        foreach (var title in deepTitles)
+        {
+            var depth = depths[title];
+            var parent = depths
+                .Where(pair => pair.Value == depth - 1 && points.ContainsKey(pair.Key))
+                .Select(pair => pair.Key)
+                .Where(candidate => AreConnected(links, candidate, title))
+                .OrderBy(candidate => childCounts.GetValueOrDefault(candidate))
+                .ThenBy(candidate => StableSeed($"{title}\u001f{candidate}"))
+                .FirstOrDefault();
+            if (parent is null) continue;
+            deepParents[title] = parent;
+            childCounts[parent] = childCounts.GetValueOrDefault(parent) + 1;
+        }
+
+        foreach (var group in deepParents
+            .GroupBy(pair => pair.Value, StringComparer.OrdinalIgnoreCase)
+            .OrderBy(group => depths.GetValueOrDefault(group.Key))
+            .ThenBy(group => StableSeed(group.Key)))
+        {
+            if (!points.TryGetValue(group.Key, out var parentPoint)) continue;
+            var children = group
+                .Select(pair => pair.Key)
+                .OrderBy(StableSeed)
+                .ThenBy(title => title, StringComparer.OrdinalIgnoreCase)
+                .ToList();
+            var outwardAngle = Math.Atan2(parentPoint.Y - focus.Y, parentPoint.X - focus.X);
+            var drift = SignedVariation($"{group.Key}\u001fdrift") * .28;
+            var spread = Math.Min(1.45, .38 + Math.Max(0, children.Count - 1) * .24);
+            for (var index = 0; index < children.Count; index++)
+            {
+                var title = children[index];
+                var fraction = children.Count == 1 ? 0 : index / (double)(children.Count - 1) - .5;
+                var angle = outwardAngle + drift + fraction * spread
+                    + SignedVariation($"{title}\u001fjitter") * .14;
+                var step = 62 + StableFraction($"{title}\u001fstep") * 44;
+                var candidate = Polar(parentPoint, step, angle);
+                var dx = candidate.X - focus.X;
+                var dy = candidate.Y - focus.Y;
+                var distance = Math.Sqrt(dx * dx + dy * dy);
+                var minimumDistance = outerRadius + 48 + Math.Max(0, depths[title] - 3) * 24;
+                if (distance < minimumDistance)
+                    candidate = Polar(focus, minimumDistance, Math.Atan2(dy, dx));
+                points[title] = new GraphPoint(
+                    Math.Clamp(candidate.X, 24, width - 24),
+                    Math.Clamp(candidate.Y, 24, height - 24));
+            }
+        }
+    }
+
     private static bool AreConnected(
         IReadOnlyDictionary<string, List<string>> links,
         string first,
@@ -287,6 +363,10 @@ public sealed class GraphLayoutService
     private static GraphPoint Polar(GraphPoint center, double radius, double angle) => new(
         center.X + Math.Cos(angle) * radius,
         center.Y + Math.Sin(angle) * radius);
+
+    private static double StableFraction(string value) => StableSeed(value) / (double)int.MaxValue;
+
+    private static double SignedVariation(string value) => StableFraction(value) * 2 - 1;
 
     private static string CreateCacheKey(
         IReadOnlyList<NoteInfo> notes,

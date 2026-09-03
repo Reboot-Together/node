@@ -229,8 +229,9 @@ try
     double RadiusOf(string title) => Math.Sqrt(
         Math.Pow(radialLayout.Points[title].X - radialFocus.X, 2)
         + Math.Pow(radialLayout.Points[title].Y - radialFocus.Y, 2));
-    if (new[] { "B", "C" }.Any(title => RadiusOf(title) is < 79.9 or > 115.1)
-        || new[] { "D", "E", "F" }.Any(title => RadiusOf(title) < 200))
+    if (new[] { "B", "C" }.Any(title => RadiusOf(title) is < 71.9 or > 126.6)
+        || new[] { "D", "E", "F" }.Any(title => RadiusOf(title) < 190)
+        || RadiusOf("G") <= RadiusOf("F") + 35)
         throw new Exception("1차·2차 별의 안쪽·바깥쪽 원 분리 실패");
     var treeEdges = radialLayout.EgoParents
         .Select(pair => (From: radialLayout.Points[pair.Value], To: radialLayout.Points[pair.Key], pair.Key, Parent: pair.Value))
@@ -274,6 +275,26 @@ try
         || GraphViewportService.NodeRadius(1, true, 20) > 5
         || GraphViewportService.NodeRadius(GraphViewportService.MinimumZoom, false, 1) >= .8)
         throw new Exception("그래프 노드 크기 단계 계산 실패");
+    if (GraphViewportService.NodeAlpha(20, 1000, 0, false)
+            >= GraphViewportService.NodeAlpha(900, 1000, 0, false)
+        || GraphViewportService.NodeAlpha(20, 1000, 0, false)
+            >= GraphViewportService.NodeAlpha(20, 1000, 8, false)
+        || GraphViewportService.NodeAlpha(0, 1, 0, true) != 255)
+        throw new Exception("정보량·연결성 기반 실제 별 밝기 계산 실패");
+    var zoomedOutField = GraphFieldStarService.Generate(1200, 900, .4);
+    var zoomedInField = GraphFieldStarService.Generate(1200, 900, 3.5);
+    var repeatedField = GraphFieldStarService.Generate(1200, 900, .4);
+    var occupiedRegions = zoomedOutField
+        .GroupBy(star => ((int)(star.Position.X / 400), (int)(star.Position.Y / 300)))
+        .Select(group => group.Key)
+        .ToHashSet();
+    if (zoomedOutField.Count <= zoomedInField.Count
+        || zoomedOutField.Count < 200
+        || !zoomedOutField.SequenceEqual(repeatedField)
+        || occupiedRegions.Count != 9
+        || zoomedOutField.Count(star => star.Twinkles) < zoomedOutField.Count / 6
+        || zoomedOutField.Count(star => star.Twinkles) > zoomedOutField.Count / 4)
+        throw new Exception("전역 우주 배경·줌 단계 기반 허수 별 배치 실패");
     var cursorDirections = Enum.GetValues<GraphCursorDirection>();
     for (var index = 0; index < cursorDirections.Length; index++)
     {

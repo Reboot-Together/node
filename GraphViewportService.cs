@@ -63,6 +63,14 @@ public static class GraphViewportService
         return (baseRadius + degreeRadius) * VisualScale(zoom);
     }
 
+    public static byte NodeAlpha(int bodyLength, int maximumBodyLength, int degree, bool selected)
+    {
+        if (selected) return 255;
+        var information = Math.Sqrt(Math.Clamp(bodyLength / (double)Math.Max(1, maximumBodyLength), 0, 1));
+        var connectedness = Math.Clamp(degree / 4d, 0, 1);
+        return (byte)Math.Round(150 + information * 65 + connectedness * 30);
+    }
+
     public static GraphCursorDirection QuantizeCursorDirection(GraphPoint previous, GraphPoint current)
     {
         var dx = current.X - previous.X;
