@@ -425,7 +425,9 @@ public sealed partial class MainWindow
         GraphCanvas.Children.Add(core);
         StartGraphTwinkle(core, $"note:{note.Title}", selected ? .55 : .3);
 
-        var hitRadius = Math.Max(8, radius);
+        var beyondNamedRange = _selected is not null
+            && !_graphRelationshipDepths.ContainsKey(note.Title);
+        var hitRadius = Math.Max(beyondNamedRange ? 10 : 8, radius);
         var hitTarget = new Ellipse
         {
             Width = hitRadius * 2,
@@ -521,7 +523,6 @@ public sealed partial class MainWindow
         var selectedTitle = _selected?.Title;
         var focusTitle = _hoveredGraphTitle is not null
             && _graphPoints.ContainsKey(_hoveredGraphTitle)
-            && CanShowGraphLabel(_hoveredGraphTitle)
             ? _hoveredGraphTitle
             : selectedTitle;
         if (focusTitle is null || !_graphPoints.TryGetValue(focusTitle, out var focusPoint)) return;
@@ -533,6 +534,8 @@ public sealed partial class MainWindow
         var candidates = new List<GraphLabelCandidate>();
         var included = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
+        if (selectedTitle is not null)
+            AddCandidate(selectedTitle, GraphLabelRole.Selected, 0);
         if (!focusTitle.Equals(selectedTitle, StringComparison.OrdinalIgnoreCase))
             AddCandidate(focusTitle, GraphLabelRole.Focus, 0);
 
@@ -567,7 +570,18 @@ public sealed partial class MainWindow
                 AddCandidate(title, GraphLabelRole.Global, 4);
         }
 
-        var placements = _graphLabelLayoutService.Arrange(candidates, focusPoint, GraphCanvas.Width, GraphCanvas.Height);
+        var lineObstacles = _graphEdgeVisuals
+            .Where(edge => edge.IsPrimary && edge.IsWithinEgo)
+            .Select(edge => new GraphLineObstacle(
+                new GraphPoint(edge.Element.X1, edge.Element.Y1),
+                new GraphPoint(edge.Element.X2, edge.Element.Y2)))
+            .ToList();
+        var placements = _graphLabelLayoutService.Arrange(
+            candidates,
+            focusPoint,
+            GraphCanvas.Width,
+            GraphCanvas.Height,
+            lineObstacles);
         AddFocusOrbit(focusPoint, orderedNeighbors, mode, hovering);
         foreach (var placement in placements) AddGraphLabel(placement);
 
@@ -590,7 +604,9 @@ public sealed partial class MainWindow
     }
 
     private bool CanShowGraphLabel(string title) =>
-        _selected is null || _graphRelationshipDepths.ContainsKey(title);
+        _selected is null
+        || _graphRelationshipDepths.ContainsKey(title)
+        || title.Equals(_hoveredGraphTitle, StringComparison.OrdinalIgnoreCase);
 
     private void AddFocusOrbit(GraphPoint focus, IReadOnlyList<string> neighbors, GraphLabelMode mode, bool hovering)
     {

@@ -199,7 +199,15 @@ public sealed class GraphLayoutService
             .OrderBy(StableSeed)
             .ThenBy(title => title, StringComparer.OrdinalIgnoreCase)
             .ToList();
-        if (firstRing.Count == 0) return parents;
+
+        var focus = new GraphPoint(width / 2, height / 2);
+        points[selectedTitle] = focus;
+        if (firstRing.Count == 0)
+        {
+            foreach (var title in points.Keys.Where(title => !title.Equals(selectedTitle, StringComparison.OrdinalIgnoreCase)).ToList())
+                points[title] = FitInside(points[title], focus, width, height, title);
+            return parents;
+        }
 
         var children = firstRing.ToDictionary(
             title => title,
@@ -219,8 +227,6 @@ public sealed class GraphLayoutService
             children[primaryParent].Add(title);
         }
 
-        var focus = new GraphPoint(width / 2, height / 2);
-        points[selectedTitle] = focus;
         var minimumDimension = Math.Min(width, height);
         var innerRadius = Math.Clamp(minimumDimension * .12, 80, 115);
         var outerRadius = Math.Clamp(minimumDimension * .27, innerRadius + 100, 250);
@@ -275,10 +281,8 @@ public sealed class GraphLayoutService
             points[title] = Polar(focus, backgroundMinimumRadius, angle);
         }
 
-        foreach (var title in points.Keys.ToList())
-            points[title] = new GraphPoint(
-                Math.Clamp(points[title].X, 24, width - 24),
-                Math.Clamp(points[title].Y, 24, height - 24));
+        foreach (var title in points.Keys.Where(title => !title.Equals(selectedTitle, StringComparison.OrdinalIgnoreCase)).ToList())
+            points[title] = FitInside(points[title], focus, width, height, title);
         return parents;
     }
 
@@ -344,9 +348,7 @@ public sealed class GraphLayoutService
                 var minimumDistance = outerRadius + 48 + Math.Max(0, depths[title] - 3) * 24;
                 if (distance < minimumDistance)
                     candidate = Polar(focus, minimumDistance, Math.Atan2(dy, dx));
-                points[title] = new GraphPoint(
-                    Math.Clamp(candidate.X, 24, width - 24),
-                    Math.Clamp(candidate.Y, 24, height - 24));
+                points[title] = candidate;
             }
         }
     }
@@ -363,6 +365,28 @@ public sealed class GraphLayoutService
     private static GraphPoint Polar(GraphPoint center, double radius, double angle) => new(
         center.X + Math.Cos(angle) * radius,
         center.Y + Math.Sin(angle) * radius);
+
+    private static GraphPoint FitInside(
+        GraphPoint point,
+        GraphPoint center,
+        double width,
+        double height,
+        string title)
+    {
+        var halfWidth = Math.Max(1, width / 2 - 24);
+        var halfHeight = Math.Max(1, height / 2 - 24);
+        var dx = point.X - center.X;
+        var dy = point.Y - center.Y;
+        var horizontalScale = Math.Abs(dx) < .001 ? 1 : halfWidth / Math.Abs(dx);
+        var verticalScale = Math.Abs(dy) < .001 ? 1 : halfHeight / Math.Abs(dy);
+        var boundaryScale = Math.Min(1, Math.Min(horizontalScale, verticalScale));
+        var touchesBoundary = Math.Abs(dx) >= halfWidth - .01 || Math.Abs(dy) >= halfHeight - .01;
+        if (!touchesBoundary) return point;
+
+        var individualInset = .91 + StableFraction($"{title}\u001fedge") * .075;
+        var scale = boundaryScale * individualInset;
+        return new GraphPoint(center.X + dx * scale, center.Y + dy * scale);
+    }
 
     private static double StableFraction(string value) => StableSeed(value) / (double)int.MaxValue;
 

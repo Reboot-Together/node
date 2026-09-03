@@ -252,6 +252,28 @@ try
                 && Cross(second.From, second.To, first.From) * Cross(second.From, second.To, first.To) < -.001;
             if (crossing) throw new Exception("2단계 방사형 성좌 뼈대의 연결선 교차 방지 실패");
         }
+    var edgeNotes = Enumerable.Range(0, 28)
+        .Select(index => new NoteInfo($"edge-{index}", Path.Combine(root, $"edge-{index}.md"), "", DateTime.Now, NoteMetadata.Manual))
+        .ToList();
+    var edgeLinks = edgeNotes
+        .Take(edgeNotes.Count - 1)
+        .Select((note, index) => (note.Title, Targets: new List<string> { edgeNotes[index + 1].Title }))
+        .ToDictionary(pair => pair.Title, pair => pair.Targets, StringComparer.OrdinalIgnoreCase);
+    var edgeLayout = new GraphLayoutService().Calculate(edgeNotes, edgeLinks, 500, 360, edgeNotes[0].Title);
+    var boundaryLines = edgeLayout.Points
+        .Where(pair => !pair.Key.Equals(edgeNotes[0].Title, StringComparison.OrdinalIgnoreCase))
+        .SelectMany(pair => new[]
+        {
+            (Axis: "x", Value: Math.Round(pair.Value.X, 2), NearEdge: pair.Value.X < 70 || pair.Value.X > 430),
+            (Axis: "y", Value: Math.Round(pair.Value.Y, 2), NearEdge: pair.Value.Y < 60 || pair.Value.Y > 300)
+        })
+        .Where(item => item.NearEdge)
+        .GroupBy(item => (item.Axis, item.Value))
+        .Select(group => group.Count())
+        .DefaultIfEmpty(0)
+        .Max();
+    if (boundaryLines >= 3)
+        throw new Exception("그래프 가장자리 노드의 직선 정렬 방지 실패");
     var zoomedViewport = GraphViewportService.CalculateZoomedViewportOffset(
         new GraphPoint(100, 50),
         new GraphPoint(200, 150),
@@ -317,6 +339,17 @@ try
             && left.Position.Y < right.Position.Y + right.Height + 5
             && left.Position.Y + left.Height + 5 > right.Position.Y)).Any(overlap => overlap))
         throw new Exception("궤도형 그래프 라벨 충돌 회피 실패");
+    var lineAwareLabel = new GraphLabelLayoutService().Arrange(
+        [new GraphLabelCandidate("선과 겹치면 안 되는 제목", new GraphPoint(100, 100), 4, 10, 100, 0, GraphLabelRole.Neighbor)],
+        new GraphPoint(0, 100),
+        300,
+        220,
+        [new GraphLineObstacle(new GraphPoint(105, 100), new GraphPoint(260, 100))]).Single();
+    if (lineAwareLabel.Position.X <= 260
+        && lineAwareLabel.Position.X + lineAwareLabel.Width >= 105
+        && lineAwareLabel.Position.Y <= 103
+        && lineAwareLabel.Position.Y + lineAwareLabel.Height >= 97)
+        throw new Exception("2단계 연결선과 그래프 라벨 충돌 회피 실패");
     var wrappedLabel = new GraphLabelLayoutService().Arrange(
         [new GraphLabelCandidate("아주 긴 문서 제목도 두 줄로 읽을 수 있어야 한다", new GraphPoint(100, 100), 4, 10, 70, 0, GraphLabelRole.Focus)],
         new GraphPoint(100, 100),
