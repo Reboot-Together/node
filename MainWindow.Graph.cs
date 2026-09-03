@@ -23,6 +23,7 @@ public sealed partial class MainWindow
     private IReadOnlyDictionary<string, int> _graphRelationshipDepths =
         new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
     private GraphLayout? _activeGraphLayout;
+    private readonly List<GraphEdgeVisual> _graphEdgeVisuals = [];
     private readonly List<UIElement> _graphLabelElements = [];
     private string? _hoveredGraphTitle;
     private bool _graphPanning;
@@ -36,6 +37,13 @@ public sealed partial class MainWindow
     private GraphCursorDirection? _graphCursorDirection;
     private Microsoft.UI.Dispatching.DispatcherQueueTimer? _graphCursorIdleTimer;
     private bool _graphCursorMoving;
+
+    private sealed record GraphEdgeVisual(
+        Line Element,
+        string Source,
+        string Target,
+        bool IsPrimary,
+        bool IsWithinEgo);
 
     private readonly record struct GraphViewportState(
         double Zoom,
@@ -124,6 +132,7 @@ public sealed partial class MainWindow
         GraphCanvas.Height = GraphLogicalHeight * _graphZoom;
         StopGraphTwinkles();
         GraphCanvas.Children.Clear();
+        _graphEdgeVisuals.Clear();
         _graphLabelElements.Clear();
         AddConstellationField(GraphCanvas.Width, GraphCanvas.Height);
 
@@ -162,7 +171,7 @@ public sealed partial class MainWindow
                     && _graphRelationshipDepths.TryGetValue(target, out var targetDepth)
                     && sourceDepth <= 2
                     && targetDepth <= 2;
-                var emphasis = direct ? 1 : withinConstellation ? 2 : 0;
+                var primary = IsEgoTreeEdge(layout.EgoParents, source, target);
                 var line = new Line
                 {
                     X1 = from.X,
@@ -170,21 +179,18 @@ public sealed partial class MainWindow
                     X2 = to.X,
                     Y2 = to.Y,
                     Stroke = new SolidColorBrush(explicitLink
-                        ? emphasis switch
-                        {
-                            1 => GraphAccent(240, bright: true),
-                            2 => GraphAccent(150),
-                            _ => ColorHelper.FromArgb(72, 150, 150, 150)
-                        }
-                        : emphasis switch
-                        {
-                            1 => ColorHelper.FromArgb(120, 175, 175, 175),
-                            2 => ColorHelper.FromArgb(82, 150, 150, 150),
-                            _ => ColorHelper.FromArgb(38, 115, 115, 115)
-                        }),
-                    StrokeThickness = (emphasis switch { 1 => 1.6, 2 => 1.15, _ => .72 }) * visualScale
+                        ? primary ? GraphAccent(direct ? (byte)240 : (byte)180, bright: direct) : GraphAccent(145)
+                        : primary ? ColorHelper.FromArgb(125, 175, 175, 175) : ColorHelper.FromArgb(95, 145, 145, 145)),
+                    StrokeThickness = (primary ? direct ? 1.6 : 1.2 : .85) * visualScale,
+                    Opacity = primary ? 1 : 0
                 };
                 GraphCanvas.Children.Add(line);
+                _graphEdgeVisuals.Add(new GraphEdgeVisual(
+                    line,
+                    source,
+                    target,
+                    primary,
+                    withinConstellation));
             }
         }
 
@@ -520,6 +526,7 @@ public sealed partial class MainWindow
     {
         if (_graphPanning || title.Equals(_hoveredGraphTitle, StringComparison.OrdinalIgnoreCase)) return;
         _hoveredGraphTitle = title;
+        RefreshGraphEdges();
         RefreshGraphLabels();
     }
 
@@ -527,8 +534,35 @@ public sealed partial class MainWindow
     {
         if (!title.Equals(_hoveredGraphTitle, StringComparison.OrdinalIgnoreCase)) return;
         _hoveredGraphTitle = null;
+        RefreshGraphEdges();
         RefreshGraphLabels();
     }
+
+    private void RefreshGraphEdges()
+    {
+        foreach (var edge in _graphEdgeVisuals)
+        {
+            if (edge.IsPrimary)
+            {
+                edge.Element.Opacity = 1;
+                continue;
+            }
+
+            var hovered = _hoveredGraphTitle is not null
+                && (edge.Source.Equals(_hoveredGraphTitle, StringComparison.OrdinalIgnoreCase)
+                    || edge.Target.Equals(_hoveredGraphTitle, StringComparison.OrdinalIgnoreCase));
+            edge.Element.Opacity = hovered ? edge.IsWithinEgo ? .72 : .38 : 0;
+        }
+    }
+
+    private static bool IsEgoTreeEdge(
+        IReadOnlyDictionary<string, string> parents,
+        string source,
+        string target) =>
+        (parents.TryGetValue(source, out var sourceParent)
+            && sourceParent.Equals(target, StringComparison.OrdinalIgnoreCase))
+        || (parents.TryGetValue(target, out var targetParent)
+            && targetParent.Equals(source, StringComparison.OrdinalIgnoreCase));
 
     private void RefreshGraphLabels()
     {

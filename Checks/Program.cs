@@ -177,8 +177,8 @@ try
     var focusedPoint = graphLayout.Points[source.Title];
     if (graphLayout.SelectedNeighbors.Any(title =>
         graphLayout.Points.TryGetValue(title, out var neighbor)
-        && Math.Sqrt(Math.Pow(neighbor.X - focusedPoint.X, 2) + Math.Pow(neighbor.Y - focusedPoint.Y, 2)) > 39.01))
-        throw new Exception("현재 노트 주변 선택 별의 초기 밀집 배치 실패");
+        && Math.Sqrt(Math.Pow(neighbor.X - focusedPoint.X, 2) + Math.Pow(neighbor.Y - focusedPoint.Y, 2)) > 115.01))
+        throw new Exception("현재 노트의 1차 방사형 배치 실패");
     var focus = graphLayout.Points[source.Title];
     var directions = graphLayout.Points
         .Where(pair => !pair.Key.Equals(source.Title, StringComparison.OrdinalIgnoreCase))
@@ -207,6 +207,50 @@ try
         || relationshipDepths.GetValueOrDefault("C") != 2
         || relationshipDepths.ContainsKey("D"))
         throw new Exception("그래프 2차 연관성 강조 범위 계산 실패");
+    var radialNotes = new[] { "A", "B", "C", "D", "E", "F", "G" }
+        .Select(title => new NoteInfo(title, Path.Combine(root, $"{title}.md"), "", DateTime.Now, NoteMetadata.Manual))
+        .ToList();
+    var radialLinks = new Dictionary<string, List<string>>(StringComparer.OrdinalIgnoreCase)
+    {
+        ["A"] = ["B", "C"],
+        ["B"] = ["D", "E"],
+        ["C"] = ["D", "F"],
+        ["F"] = ["G"]
+    };
+    var radialLayout = new GraphLayoutService().Calculate(radialNotes, radialLinks, 1200, 900, "A");
+    if (radialLayout.EgoParents.GetValueOrDefault("B") != "A"
+        || radialLayout.EgoParents.GetValueOrDefault("C") != "A"
+        || !radialLayout.EgoParents.ContainsKey("D")
+        || !radialLayout.EgoParents.ContainsKey("E")
+        || !radialLayout.EgoParents.ContainsKey("F")
+        || radialLayout.EgoParents.ContainsKey("G"))
+        throw new Exception("2단계 방사형 성좌의 대표 부모 선택 실패");
+    var radialFocus = radialLayout.Points["A"];
+    double RadiusOf(string title) => Math.Sqrt(
+        Math.Pow(radialLayout.Points[title].X - radialFocus.X, 2)
+        + Math.Pow(radialLayout.Points[title].Y - radialFocus.Y, 2));
+    if (new[] { "B", "C" }.Any(title => RadiusOf(title) is < 79.9 or > 115.1)
+        || new[] { "D", "E", "F" }.Any(title => RadiusOf(title) < 200))
+        throw new Exception("1차·2차 별의 안쪽·바깥쪽 원 분리 실패");
+    var treeEdges = radialLayout.EgoParents
+        .Select(pair => (From: radialLayout.Points[pair.Value], To: radialLayout.Points[pair.Key], pair.Key, Parent: pair.Value))
+        .ToList();
+    for (var left = 0; left < treeEdges.Count; left++)
+        for (var right = left + 1; right < treeEdges.Count; right++)
+        {
+            var first = treeEdges[left];
+            var second = treeEdges[right];
+            if (first.Key == second.Key
+                || first.Key == second.Parent
+                || first.Parent == second.Key
+                || first.Parent == second.Parent)
+                continue;
+            static double Cross(GraphPoint a, GraphPoint b, GraphPoint c) =>
+                (b.X - a.X) * (c.Y - a.Y) - (b.Y - a.Y) * (c.X - a.X);
+            var crossing = Cross(first.From, first.To, second.From) * Cross(first.From, first.To, second.To) < -.001
+                && Cross(second.From, second.To, first.From) * Cross(second.From, second.To, first.To) < -.001;
+            if (crossing) throw new Exception("2단계 방사형 성좌 뼈대의 연결선 교차 방지 실패");
+        }
     var zoomedViewport = GraphViewportService.CalculateZoomedViewportOffset(
         new GraphPoint(100, 50),
         new GraphPoint(200, 150),
