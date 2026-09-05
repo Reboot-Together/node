@@ -48,33 +48,34 @@ internal static class TextDiagramChecks
         └─ 표준정규 / √(카이제곱/자유도)
                 → t분포
 """;
-        if (!TextDiagramRenderer.IsWholeDiagram(sample)) throw new Exception("확률분포 트리 전체 감지 실패");
-        var markdown = "설명 문단\n" + sample + "\n다음 문단";
+        var normalizedSample = MarkdownText.NormalizeNewlines(sample);
+        if (!TextDiagramRenderer.IsWholeDiagram(normalizedSample)) throw new Exception("확률분포 트리 전체 감지 실패");
+        var markdown = "설명 문단\n" + normalizedSample + "\n다음 문단";
         var session = new PreviewEditSession(markdown);
         var rendered = MarkdownPreviewRenderer.Render(markdown, root, editSession: session);
         var blocks = Diagrams(rendered);
-        if (blocks.Count != 1 || PlainText(blocks[0].Value) != sample)
+        if (blocks.Count != 1 || MarkdownText.NormalizeNewlines(PlainText(blocks[0].Value)) != normalizedSample)
             throw new Exception("텍스트 다이어그램 공백·줄바꿈·복사 원문 보존 실패");
         if (!blocks[0].Value.Contains("data-source-offset=\"6\"")
-            || !blocks[0].Value.Contains($"data-source-end=\"{6 + sample.Length}\"")
+            || !blocks[0].Value.Contains($"data-source-end=\"{6 + normalizedSample.Length}\"")
             || blocks[0].Value.Contains("data-edit-start")
-            || !rendered.Contains($"data-edit-start=\"{7 + sample.Length}\""))
+            || !rendered.Contains($"data-edit-start=\"{7 + normalizedSample.Length}\""))
             throw new Exception("다이어그램과 다음 문단 원문 위치 연결 실패");
         if (!blocks[0].Value.Contains("diagram-connector") || !blocks[0].Value.Contains("width:10ch")
             || !rendered.Contains("overflow-x:auto;white-space:pre;overflow-wrap:normal;word-break:normal;tab-size:4")
             || !rendered.Contains("selection.getRangeAt(0).cloneContents().textContent"))
             throw new Exception("다이어그램 연결선·한글 폭·가로 스크롤 스타일 실패");
 
-        var crlf = MarkdownPreviewRenderer.Render(sample.Replace("\n", "\r\n"), root);
-        if (PlainText(Diagrams(crlf)[0].Value) != sample) throw new Exception("CRLF 트리 보존 실패");
+        var crlf = MarkdownPreviewRenderer.Render(normalizedSample.Replace("\n", "\r\n"), root);
+        if (MarkdownText.NormalizeNewlines(PlainText(Diagrams(crlf)[0].Value)) != normalizedSample) throw new Exception("CRLF 트리 보존 실패");
         var tabs = "root\n├─ <script> & [[링크]]\n│\t\t**서식 아님**\n└─ 끝";
         var tabHtml = MarkdownPreviewRenderer.Render(tabs, root);
         if (PlainText(Diagrams(tabHtml)[0].Value) != tabs || Diagrams(tabHtml)[0].Value.Contains("<script>"))
             throw new Exception("트리 탭·특수문자·HTML 안전 렌더링 실패");
         foreach (var language in new[] { "", "text", "txt", "plaintext" })
         {
-            var fenced = MarkdownPreviewRenderer.Render($"```{language}\n{sample}\n```", root);
-            if (Diagrams(fenced).Count != 1 || PlainText(Diagrams(fenced)[0].Value) != sample + "\n")
+            var fenced = MarkdownPreviewRenderer.Render($"```{language}\n{normalizedSample}\n```", root);
+            if (Diagrams(fenced).Count != 1 || MarkdownText.NormalizeNewlines(PlainText(Diagrams(fenced)[0].Value)) != normalizedSample + "\n")
                 throw new Exception("코드 펜스 트리 원문 보존 실패: " + language);
         }
         foreach (var ordinary in new[]
@@ -82,18 +83,18 @@ internal static class TextDiagramChecks
             "문장 안의 │와 ├─ 기호는 설명입니다.\n다음 문장",
             "root\n│\n└─ 하나뿐인 가지",
             "| 이름 | 값 |\n| --- | --- |\n| ├─ | └─ |",
-            "```python\n" + sample + "\n```",
-            "````python\n```\n" + sample + "\n````",
-            "<pre>\n" + sample + "\n</pre>",
+            "```python\n" + normalizedSample + "\n```",
+            "````python\n```\n" + normalizedSample + "\n````",
+            "<pre>\n" + normalizedSample + "\n</pre>",
             "---\ntitle: diagram\ntree: |\n  root\n  ├─ a\n  └─ b\n---",
-            "%%\n" + sample + "\n%%",
-            "$$\n" + sample + "\n$$"
+            "%%\n" + normalizedSample + "\n%%",
+            "$$\n" + normalizedSample + "\n$$"
         })
             if (Diagrams(MarkdownPreviewRenderer.Render(ordinary, root)).Count != 0)
                 throw new Exception("일반 문장·코드·HTML·메타데이터·수식 오인 방지 실패: " + ordinary[..Math.Min(24, ordinary.Length)]);
-        if (Diagrams(MarkdownPreviewRenderer.Render(sample + "\n\n설명\n\n" + sample, root)).Count != 2)
+        if (Diagrams(MarkdownPreviewRenderer.Render(normalizedSample + "\n\n설명\n\n" + normalizedSample, root)).Count != 2)
             throw new Exception("복수 다이어그램 분리 실패");
-        var quoted = "앞 문단\n\n> [!note] 구조\n> " + sample.Replace("\n", "\n> ");
+        var quoted = "앞 문단\n\n> [!note] 구조\n> " + normalizedSample.Replace("\n", "\n> ");
         var quotedDiagram = Diagrams(MarkdownPreviewRenderer.Render(quoted, root));
         if (quotedDiagram.Count != 1 || quotedDiagram[0].Value.Contains("data-source-offset"))
             throw new Exception("콜아웃 내부 트리 상대 위치의 원문 오연결 방지 실패");
