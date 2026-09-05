@@ -38,6 +38,10 @@ public sealed partial class MainWindow : Window
     private NoteInfo? _selected;
     private bool _loading;
     private bool _previewReady;
+    private bool _titlePreviewReady;
+    private WebViewHtmlUpdater? _previewHtmlUpdater;
+    private WebViewHtmlUpdater? _titleHtmlUpdater;
+    private PreviewEditSession? _previewEditSession;
     private UiLayoutSettings _uiLayoutSettings = UiLayoutSettings.Default;
     private ScrollViewer? _editorScrollViewer;
     private bool _previewHoverSelectionActive;
@@ -158,6 +162,7 @@ public sealed partial class MainWindow : Window
         Editor.Text = note.Body;
         RevealNoteInTree(note);
         _loading = false;
+        ShowRenderedTitle();
         ShowEditorAndPreview();
         UpdateBacklinks();
         UpdateSemanticSuggestions();
@@ -275,6 +280,52 @@ public sealed partial class MainWindow : Window
         }
     }
 
+    private void TitleBox_GotFocus(object sender, RoutedEventArgs e)
+    {
+        if (_selected?.IsReadOnly == true) return;
+        TitlePreview.Visibility = Visibility.Collapsed;
+        TitleBox.Opacity = 1;
+    }
+
+    private void TitleBox_LostFocus(object sender, RoutedEventArgs e)
+    {
+        if (_loading) return;
+        SaveCurrent();
+        ShowRenderedTitle();
+    }
+
+    private async void TitlePreview_Loaded(object sender, RoutedEventArgs e)
+    {
+        if (_titlePreviewReady) return;
+        try
+        {
+            await TitlePreview.EnsureCoreWebView2Async();
+            var mathAssetsPath = Path.Combine(AppContext.BaseDirectory, "Assets", "KaTeX");
+            if (Directory.Exists(mathAssetsPath))
+                TitlePreview.CoreWebView2.SetVirtualHostNameToFolderMapping(
+                    "node-assets.local", mathAssetsPath, CoreWebView2HostResourceAccessKind.Allow);
+            _titleHtmlUpdater = new WebViewHtmlUpdater(TitlePreview);
+            _titlePreviewReady = true;
+            ShowRenderedTitle();
+        }
+        catch
+        {
+            TitlePreview.Visibility = Visibility.Collapsed;
+            TitleBox.Opacity = 1;
+        }
+    }
+
+    private void ShowRenderedTitle()
+    {
+        if (!_titlePreviewReady || TitleBox.FocusState != FocusState.Unfocused && _selected?.IsReadOnly != true) return;
+        TitleBox.Opacity = 0;
+        TitleBox.IsHitTestVisible = _selected?.IsReadOnly != true;
+        TitleBox.IsTabStop = _selected?.IsReadOnly != true;
+        TitlePreview.Visibility = Visibility.Visible;
+        _titleHtmlUpdater?.Update(MarkdownPreviewRenderer.RenderTitle(
+            TitleBox.Text, _uiLayoutSettings.FontScale, CurrentSurface.Key));
+    }
+
     private async void Editor_KeyDown(object sender, KeyRoutedEventArgs e)
     {
         var controlDown = IsKeyDown(Windows.System.VirtualKey.Control)
@@ -388,6 +439,8 @@ public sealed partial class MainWindow : Window
         DocumentKindText.Text = readOnly ? "GUIDE" : "NOTE";
         ReadOnlyBadge.Visibility = readOnly ? Visibility.Visible : Visibility.Collapsed;
         TitleBox.IsReadOnly = readOnly;
+        TitleBox.IsHitTestVisible = !readOnly;
+        TitleBox.IsTabStop = !readOnly;
         Editor.IsReadOnly = readOnly;
         EditorContainer.Visibility = readOnly ? Visibility.Collapsed : Visibility.Visible;
         EditorPreviewDivider.Visibility = readOnly ? Visibility.Collapsed : Visibility.Visible;
@@ -468,6 +521,7 @@ public sealed partial class MainWindow : Window
                     CoreWebView2HostResourceAccessKind.Allow);
             }
             MarkdownPreview.CoreWebView2.WebMessageReceived += MarkdownPreview_WebMessageReceived;
+            _previewHtmlUpdater = new WebViewHtmlUpdater(MarkdownPreview);
             _previewReady = true;
             UpdateMarkdownPreview();
         }
@@ -481,7 +535,8 @@ public sealed partial class MainWindow : Window
     {
         if (!_previewReady) return;
         ClearPreviewHoverSelection();
-        MarkdownPreview.NavigateToString(MarkdownPreviewRenderer.Render(
+        _previewEditSession = _selected is { IsReadOnly: false } ? new PreviewEditSession(Editor.Text) : null;
+        _previewHtmlUpdater?.Update(MarkdownPreviewRenderer.Render(
             Editor.Text,
             _workspace.RootPath,
             ResolveNoteBody,
@@ -489,7 +544,8 @@ public sealed partial class MainWindow : Window
             CurrentPreviewScrollY(),
             _uiLayoutSettings.FontScale,
             CurrentAccent.CssColor,
-            CurrentSurface.Key));
+            CurrentSurface.Key,
+            _previewEditSession));
     }
 
     private Dictionary<string, bool> CurrentFoldStates()
@@ -516,7 +572,22 @@ public sealed partial class MainWindow : Window
             var root = message.RootElement;
             if (!root.TryGetProperty("type", out var type)) return;
             var messageType = type.GetString();
-            if (messageType is "workspace-mode-toggle" or "workspace-mode-document")
+            if (messageType == "inline-edit")
+            {
+                if (_selected is not { IsReadOnly: false } || _previewEditSession is null) return;
+                ClearPreviewHoverSelection();
+                if (_previewEditSession.TryApply(Editor.Text, root, out var updated))
+                {
+                    Editor.Text = updated;
+                    SaveEditor();
+                }
+                else
+                {
+                    UpdateMarkdownPreview();
+                    _ = ShowMessage("텍스트 수정 미반영", "원문이 변경되었거나 지원하지 않는 텍스트입니다. 최신 미리보기에서 다시 수정해주세요.");
+                }
+            }
+            else if (messageType is "workspace-mode-toggle" or "workspace-mode-document")
             {
                 HandleWorkspaceModeMessage(messageType);
             }

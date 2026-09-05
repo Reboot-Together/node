@@ -49,11 +49,13 @@ public sealed partial class MainWindow
             accent.Color = palette.Surface;
         ApplyEditorPalette(Editor, surface, palette.Surface);
         MarkdownPreview.DefaultBackgroundColor = surface.DocumentBackground;
+        TitlePreview.DefaultBackgroundColor = surface.DocumentBackground;
         ApplyTitleBarAppearance(surface);
 
         if (!refreshContent) return;
         RefreshSideDocumentAppearance();
         if (_previewReady) UpdateMarkdownPreview();
+        if (_titlePreviewReady) ShowRenderedTitle();
         if (GraphCanvas is not null) DrawGraph(centerCurrentNode: false);
     }
 

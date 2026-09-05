@@ -75,15 +75,10 @@
                     </Viewbox>
                     <Viewbox Grid.Column="2" Width="12" Height="12" Opacity="{x:Bind FolderIconOpacity}" HorizontalAlignment="Center" VerticalAlignment="Center" IsHitTestVisible="False">
                       <Canvas Width="16" Height="16">
-                        <Path Data="M1.2,9.4 C3.2,13.3 9.5,14.2 13.9,10.3 C16.1,8.4 15.1,6.1 12.7,5.5 C10.2,4.9 8.0,6.1 7.3,7.7" Fill="Transparent" Stroke="{StaticResource PrimaryText}" StrokeThickness="1.35" StrokeStartLineCap="Round" StrokeEndLineCap="Round" Opacity="0.9" />
-                        <Path Data="M14.8,6.6 C12.8,2.7 6.5,1.8 2.1,5.7 C-0.1,7.6 0.9,9.9 3.3,10.5 C5.8,11.1 8.0,9.9 8.7,8.3" Fill="Transparent" Stroke="{StaticResource PrimaryText}" StrokeThickness="1.15" StrokeStartLineCap="Round" StrokeEndLineCap="Round" Opacity="0.62" />
-                        <Ellipse Canvas.Left="6.45" Canvas.Top="6.45" Width="3.1" Height="3.1" Fill="{StaticResource PrimaryText}" />
+                        <Path Data="M1.5,4.4 C1.5,3.7 2.05,3.15 2.75,3.15 L6.15,3.15 L7.45,4.65 L13.25,4.65 C13.95,4.65 14.5,5.2 14.5,5.9 L14.5,11.6 C14.5,12.3 13.95,12.85 13.25,12.85 L2.75,12.85 C2.05,12.85 1.5,12.3 1.5,11.6 Z M1.5,6.05 L14.5,6.05" Fill="Transparent" Stroke="{StaticResource PrimaryText}" StrokeThickness="1.25" StrokeStartLineCap="Round" StrokeEndLineCap="Round" StrokeLineJoin="Round" Opacity="0.82" />
                       </Canvas>
                     </Viewbox>
-                    <StackPanel Grid.Column="3" Spacing="2" VerticalAlignment="Center">
-                      <TextBlock Text="{x:Bind Name}" FontSize="{Binding Ui, Source={StaticResource Typography}}" FontWeight="Normal" Foreground="{StaticResource PrimaryText}" TextTrimming="CharacterEllipsis" />
-                      <TextBlock Text="{x:Bind Subtitle}" FontSize="{Binding Small, Source={StaticResource Typography}}" Foreground="{StaticResource MutedText}" TextTrimming="CharacterEllipsis" />
-                    </StackPanel>
+                    <TextBlock Grid.Column="3" Text="{x:Bind Name}" Height="14" VerticalAlignment="Center" FontSize="{Binding Ui, Source={StaticResource Typography}}" FontWeight="Normal" Foreground="{StaticResource PrimaryText}" LineHeight="14" LineStackingStrategy="BlockLineHeight" TextTrimming="CharacterEllipsis" />
                   </Grid>
                 </Border>
               </DataTemplate>
@@ -114,7 +109,10 @@
           <Grid ColumnDefinitions="*,Auto">
             <StackPanel Spacing="2">
               <TextBlock x:Name="DocumentKindText" Text="NOTE" Foreground="{StaticResource Positive}" FontSize="{Binding Small, Source={StaticResource Typography}}" FontWeight="SemiBold" />
-              <TextBox x:Name="TitleBox" Background="Transparent" BorderThickness="0" Padding="0,3" FontSize="{Binding Title, Source={StaticResource Typography}}" FontWeight="SemiBold" PlaceholderText="무엇을 기록할까요?" TextChanged="TitleBox_TextChanged" />
+              <Grid Height="30">
+                <WebView2 x:Name="TitlePreview" DefaultBackgroundColor="#1E1E1E" IsHitTestVisible="False" Loaded="TitlePreview_Loaded" />
+                <TextBox x:Name="TitleBox" Background="Transparent" BorderThickness="0" Padding="0,3" FontSize="{Binding Title, Source={StaticResource Typography}}" FontWeight="SemiBold" PlaceholderText="무엇을 기록할까요?" Opacity="0" TextChanged="TitleBox_TextChanged" GotFocus="TitleBox_GotFocus" LostFocus="TitleBox_LostFocus" />
+              </Grid>
             </StackPanel>
             <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="6" VerticalAlignment="Top">
               <Border x:Name="ReadOnlyBadge" Visibility="Collapsed" Background="{StaticResource CardBackground}" BorderBrush="{StaticResource CardBorder}" BorderThickness="1" CornerRadius="4" Padding="7,4">
@@ -172,9 +170,9 @@
 
       <Button x:Name="ExplorerOpenButton" Grid.Column="1" Content="›" Style="{StaticResource QuietButton}" Padding="8,5" MinWidth="0" HorizontalAlignment="Left" VerticalAlignment="Top" Margin="7,4,0,0" Visibility="Collapsed" Click="ExplorerOpen_Click" ToolTipService.ToolTip="노트 탐색기 펼치기" Canvas.ZIndex="30" />
 
-      <Border x:Name="ConstellationPanel" Grid.Column="1" Margin="0,38,0,0" Visibility="Collapsed" Background="#151515" Padding="14,12,14,14" Canvas.ZIndex="10">
-        <Grid RowDefinitions="Auto,*" RowSpacing="10">
-          <Grid ColumnDefinitions="*,Auto,Auto,Auto">
+      <Border x:Name="ConstellationPanel" Grid.Column="1" Margin="0,38,0,0" Visibility="Collapsed" Background="#151515" Canvas.ZIndex="10">
+        <Grid RowDefinitions="Auto,*">
+          <Grid ColumnDefinitions="*,Auto,Auto,Auto" Margin="14,12,14,10">
             <StackPanel VerticalAlignment="Center" Spacing="1">
               <TextBlock x:Name="ConstellationTitleText" Text="성좌 지도" FontWeight="SemiBold" FontSize="{Binding Ui, Source={StaticResource Typography}}" Foreground="#E0E0E0" />
               <TextBlock Text="현재 노트를 중심으로 주변 지식을 탐험합니다 · Esc로 문서 복귀" FontSize="{Binding Small, Source={StaticResource Typography}}" Foreground="#8F8F8F" />
@@ -184,11 +182,9 @@
             <Button Grid.Column="3" Content="＋" Style="{StaticResource QuietButton}" Padding="8,4" MinWidth="0" Click="GraphZoomIn_Click" ToolTipService.ToolTip="확대" />
           </Grid>
           <Grid Grid.Row="1">
-            <Border Background="#151515" BorderBrush="#303030" BorderThickness="1" CornerRadius="7" Padding="3">
-              <ScrollViewer x:Name="GraphScroll" HorizontalScrollBarVisibility="Hidden" VerticalScrollBarVisibility="Hidden" HorizontalContentAlignment="Center" VerticalContentAlignment="Center" ZoomMode="Disabled" SizeChanged="GraphScroll_SizeChanged">
-                <local:DirectionalCursorCanvas x:Name="GraphCanvas" Width="1200" Height="900" Background="#151515" DoubleTapped="GraphCanvas_DoubleTapped" PointerEntered="GraphCanvas_PointerEntered" PointerExited="GraphCanvas_PointerExited" PointerPressed="GraphCanvas_PointerPressed" PointerMoved="GraphCanvas_PointerMoved" PointerReleased="GraphCanvas_PointerReleased" PointerCanceled="GraphCanvas_PointerReleased" PointerCaptureLost="GraphCanvas_PointerReleased" />
-              </ScrollViewer>
-            </Border>
+            <ScrollViewer x:Name="GraphScroll" Background="#151515" HorizontalScrollBarVisibility="Hidden" VerticalScrollBarVisibility="Hidden" HorizontalContentAlignment="Center" VerticalContentAlignment="Center" ZoomMode="Disabled" SizeChanged="GraphScroll_SizeChanged">
+              <local:DirectionalCursorCanvas x:Name="GraphCanvas" Width="1200" Height="900" Background="#151515" DoubleTapped="GraphCanvas_DoubleTapped" PointerEntered="GraphCanvas_PointerEntered" PointerExited="GraphCanvas_PointerExited" PointerPressed="GraphCanvas_PointerPressed" PointerMoved="GraphCanvas_PointerMoved" PointerReleased="GraphCanvas_PointerReleased" PointerCanceled="GraphCanvas_PointerReleased" PointerCaptureLost="GraphCanvas_PointerReleased" />
+            </ScrollViewer>
             <Expander Header="연결 정보" IsExpanded="False" Width="300" MaxHeight="650" HorizontalAlignment="Right" VerticalAlignment="Top" Margin="12" Background="{StaticResource SidebarBackground}" FontSize="{Binding Small, Source={StaticResource Typography}}" Canvas.ZIndex="20">
               <ScrollViewer MaxHeight="590" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
                 <StackPanel Spacing="8" Padding="10,8,10,10">

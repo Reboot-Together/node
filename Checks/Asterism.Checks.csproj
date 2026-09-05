@@ -20,6 +20,8 @@
     <Compile Include="..\VaultTreeService.cs" Link="VaultTreeService.cs" />
     <Compile Include="..\UpdateService.cs" Link="UpdateService.cs" />
     <Compile Include="..\MarkdownPreviewRenderer.cs" Link="MarkdownPreviewRenderer.cs" />
+    <Compile Include="..\PreviewEditSession.cs" Link="PreviewEditSession.cs" />
+    <Compile Include="..\TextDiagramRenderer.cs" Link="TextDiagramRenderer.cs" />
     <Compile Include="..\CodeSyntaxHighlighter.cs" Link="CodeSyntaxHighlighter.cs" />
     <Compile Include="..\BuiltInGuideService.cs" Link="BuiltInGuideService.cs" />
     <Compile Include="..\FolderExpansionService.cs" Link="FolderExpansionService.cs" />

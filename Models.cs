@@ -27,5 +27,4 @@ public sealed record VaultItem(
     public double NoteDotOpacity => IsFolder ? 0 : 1;
     public double FolderIconOpacity => IsFolder ? 1 : 0;
     public bool IsVirtual => Path.StartsWith("asterism-guide://", StringComparison.OrdinalIgnoreCase);
-    public string Subtitle => Note is null ? "" : Note.IsReadOnly ? "읽기 전용 · 자동 업데이트" : $"{Note.Metadata.Category} · {Note.Metadata.Source}";
 }

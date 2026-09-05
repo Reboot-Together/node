@@ -49,6 +49,40 @@ public static class GraphViewportService
             Math.Clamp(vertical, 0, Math.Max(0, newContentSize.Y - viewportSize.Y)));
     }
 
+    public static GraphPoint CalculateCenteredZoomedViewportOffset(
+        GraphPoint currentOffset,
+        GraphPoint pointerInViewport,
+        double previousZoom,
+        double nextZoom,
+        GraphPoint logicalContentSize,
+        GraphPoint viewportSize)
+    {
+        var previousContent = new GraphPoint(
+            Math.Max(logicalContentSize.X * previousZoom, viewportSize.X),
+            Math.Max(logicalContentSize.Y * previousZoom, viewportSize.Y));
+        var nextContent = new GraphPoint(
+            Math.Max(logicalContentSize.X * nextZoom, viewportSize.X),
+            Math.Max(logicalContentSize.Y * nextZoom, viewportSize.Y));
+        var previousPadding = new GraphPoint(
+            (previousContent.X - logicalContentSize.X * previousZoom) / 2,
+            (previousContent.Y - logicalContentSize.Y * previousZoom) / 2);
+        var nextPadding = new GraphPoint(
+            (nextContent.X - logicalContentSize.X * nextZoom) / 2,
+            (nextContent.Y - logicalContentSize.Y * nextZoom) / 2);
+        var logicalPointer = new GraphPoint(
+            (currentOffset.X + pointerInViewport.X - previousPadding.X) / previousZoom,
+            (currentOffset.Y + pointerInViewport.Y - previousPadding.Y) / previousZoom);
+        return new GraphPoint(
+            Math.Clamp(
+                nextPadding.X + logicalPointer.X * nextZoom - pointerInViewport.X,
+                0,
+                Math.Max(0, nextContent.X - viewportSize.X)),
+            Math.Clamp(
+                nextPadding.Y + logicalPointer.Y * nextZoom - pointerInViewport.Y,
+                0,
+                Math.Max(0, nextContent.Y - viewportSize.Y)));
+    }
+
     public static GraphLabelMode LabelMode(double zoom, bool hovering) =>
         zoom >= 1.1 ? GraphLabelMode.Detail
         : hovering || zoom >= .7 ? GraphLabelMode.Orbit

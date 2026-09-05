@@ -1,5 +1,14 @@
 using AsterismApp;
 
+if (args is ["--render-inline-sample", var inlineOutputPath])
+{
+    var sample = "## 제목 수정\n\n일반 문장과 **굵은 텍스트** 그리고 *기울임*.\n\n- 목록 항목\n\n[링크](https://example.com)\n\n```python\n# comment\nprint('code')\n```\n\n수식 $x + y$";
+    var html = MarkdownPreviewRenderer.Render(sample, Path.GetDirectoryName(inlineOutputPath)!, editSession: new PreviewEditSession(sample));
+    html = html.Replace("<head>", "<head><script>window.chrome=window.chrome||{};window.chrome.webview={postMessage:m=>{document.documentElement.dataset.lastMessage=JSON.stringify(m);if(m.type==='inline-edit')document.documentElement.dataset.lastEdit=JSON.stringify(m);}};</script>");
+    File.WriteAllText(inlineOutputPath, html);
+    return;
+}
+
 if (args is ["--render-sample", var outputPath])
 {
     var sample = """
@@ -285,6 +294,16 @@ try
         || Math.Abs((zoomedViewport.X + 200) / 1.2 - 300) > .001
         || Math.Abs((zoomedViewport.Y + 150) / 1.2 - 200) > .001)
         throw new Exception("마우스 포인터 기준 그래프 확대 위치 계산 실패");
+    var centeredViewport = GraphViewportService.CalculateCenteredZoomedViewportOffset(
+        new GraphPoint(0, 0),
+        new GraphPoint(450, 350),
+        .5,
+        1,
+        new GraphPoint(1200, 900),
+        new GraphPoint(900, 700));
+    if (Math.Abs(centeredViewport.X - 150) > .001
+        || Math.Abs(centeredViewport.Y - 100) > .001)
+        throw new Exception("전체 화면 별 배경의 포인터 중심 확대 위치 계산 실패");
     if (GraphViewportService.ChangeZoom(1, false, 10) != GraphViewportService.MinimumZoom
         || GraphViewportService.ChangeZoom(1, true, 10) != GraphViewportService.MaximumZoom
         || GraphViewportService.LabelMode(.69, false) != GraphLabelMode.FocusOnly
@@ -378,6 +397,7 @@ try
         print("hello", name)
     ```
     """, root);
+    TextDiagramChecks.Run(root);
     if (!highlightedCode.Contains("data-language=\"PYTHON\"")
         || !highlightedCode.Contains("tok-keyword\">def")
         || !highlightedCode.Contains("tok-comment\"># comment")
@@ -459,8 +479,48 @@ Recall = TP / (TP + FN)
         || !sectionRender.Contains("type: 'hover-editor', offset, endOffset")
         || !sectionRender.Contains("type: 'hover-editor-clear'")
         || !sectionRender.Contains("data-source-offset=\"0\"")
-        || sectionRender.Contains("document.addEventListener('dblclick'"))
+        || !sectionRender.Contains("document.addEventListener('dblclick'"))
         throw new Exception("미리보기 클릭 원문 위치 연결 실패");
+    var inlineSource = "## 제목\r\n\r\n반복 **굵게** 그리고 *기울임*\r\n\r\n반복\r\n\r\n- 목록\r\n\r\n[링크](https://example.com)\r\n\r\n```text\r\n코드\r\n```\r\n\r\n수식 $x+y$\r\n\r\n> [!note] 제목\r\n> 콜아웃";
+    var inlineSession = new PreviewEditSession(inlineSource);
+    var inlineRender = MarkdownPreviewRenderer.Render(inlineSource, root, editSession: inlineSession);
+    var editMatches = System.Text.RegularExpressions.Regex.Matches(inlineRender, "<span class=\"editable-text\" data-edit-start=\"(\\d+)\"[^>]*>(.*?)</span>");
+    var editable = editMatches.ToDictionary(match => int.Parse(match.Groups[1].Value), match => System.Net.WebUtility.HtmlDecode(match.Groups[2].Value));
+    var normalizedInline = MarkdownText.NormalizeNewlines(inlineSource);
+    foreach (var label in new[] { "제목", "굵게", "기울임", "목록" })
+        if (!editable.TryGetValue(normalizedInline.IndexOf(label, StringComparison.Ordinal), out var value) || value != label)
+            throw new Exception($"인라인 원문 범위 연결 실패: {label}");
+    if (editable.Values.Any(value => value.Contains("링크") || value.Contains("코드") || value.Contains("수식") || value.Contains("콜아웃")))
+        throw new Exception("인라인 제외 영역 보호 실패");
+    if (editable.Values.Count(value => value.Trim() == "반복") != 2)
+        throw new Exception("인라인 반복 텍스트 위치 구분 실패");
+    System.Text.Json.JsonElement EditMessage(PreviewEditSession session, int start, string text) =>
+        System.Text.Json.JsonSerializer.SerializeToElement(new { session = session.Id, start, text });
+    var boldStart = normalizedInline.IndexOf("굵게", StringComparison.Ordinal);
+    if (!inlineSession.TryApply(inlineSource, EditMessage(inlineSession, boldStart, "한글 😀 *별* [링크]"), out var inlineUpdated)
+        || !inlineUpdated.Contains("**한글 😀 \\*별\\* \\[링크\\]**") || !inlineUpdated.Contains("\r\n"))
+        throw new Exception("인라인 서식 보존 및 CRLF 원문 수정 실패");
+    if (inlineSession.TryApply(inlineSource + "변경", EditMessage(inlineSession, boldStart, "수정"), out _)
+        || inlineSession.TryApply(inlineSource, EditMessage(new PreviewEditSession(inlineSource), boldStart, "수정"), out _)
+        || inlineSession.TryApply(inlineSource, EditMessage(inlineSession, 0, "수정"), out _)
+        || inlineSession.TryApply(inlineSource, EditMessage(inlineSession, boldStart, "줄\n변경"), out _)
+        || inlineSession.TryApply(inlineSource, EditMessage(inlineSession, boldStart, " "), out _))
+        throw new Exception("오래된 미리보기·허용하지 않은 범위·구조 변경 차단 실패");
+    var secondSession = new PreviewEditSession(inlineUpdated);
+    var secondRender = MarkdownPreviewRenderer.Render(inlineUpdated, root, editSession: secondSession);
+    if (!secondRender.Contains("한글 😀 *별* [링크]</span>"))
+        throw new Exception("인라인 이스케이프 텍스트 재편집 연결 실패: " + System.Text.RegularExpressions.Regex.Match(secondRender, "<strong>.*?</strong>").Value);
+    if (MarkdownPreviewRenderer.Render(inlineSource, root).Contains("<span class=\"editable-text\""))
+        throw new Exception("읽기 전용 미리보기 편집 금지 실패");
+    var transformedSource = "[[링크]]\n\n> [!note] 제목\n> 본문\n\n%%숨김%%\n\n뒤 문장\n\n| 항목 | 값 |\n| --- | --- |\n| 표 셀 | 1 |";
+    var transformedSession = new PreviewEditSession(transformedSource);
+    var transformedRender = MarkdownPreviewRenderer.Render(transformedSource, root, editSession: transformedSession);
+    var afterTransformStart = transformedSource.IndexOf("뒤 문장", StringComparison.Ordinal);
+    if (!transformedSession.TryApply(transformedSource, EditMessage(transformedSession, afterTransformStart, "수정"), out var afterTransformResult)
+        || afterTransformResult != transformedSource.Remove(afterTransformStart, "뒤 문장".Length).Insert(afterTransformStart, "수정"))
+        throw new Exception("전처리 후 인라인 위치 연결 실패");
+    if (System.Text.RegularExpressions.Regex.IsMatch(transformedRender, "<span class=\"editable-text\"[^>]*>[^<]*표 셀"))
+        throw new Exception("복합 표 구조 인라인 편집 제외 실패");
     var repeatedSourceRender = MarkdownPreviewRenderer.Render("같은 문장\n\n같은 문장", root);
     if (!repeatedSourceRender.Contains("data-source-offset=\"0\"")
         || !repeatedSourceRender.Contains("data-source-offset=\"7\""))
@@ -546,6 +606,16 @@ Recall = TP / (TP + FN)
         || !mathRender.Contains("https://node-assets.local/auto-render.min.js")
         || !mathRender.Contains("window.renderMathInElement(root"))
         throw new Exception("LaTeX 수식 렌더링 연결 실패");
+    var headingMathRender = MarkdownPreviewRenderer.Render("# 평균 $\\bar{x}$\n\n## 분산 $s^2$", root);
+    var firstHeadingHtml = System.Text.RegularExpressions.Regex.Match(headingMathRender, "<h1[^>]*>(.*?)</h1>", System.Text.RegularExpressions.RegexOptions.Singleline).Groups[1].Value;
+    var secondHeadingHtml = System.Text.RegularExpressions.Regex.Match(headingMathRender, "<h2[^>]*>(.*?)</h2>", System.Text.RegularExpressions.RegexOptions.Singleline).Groups[1].Value;
+    if (!firstHeadingHtml.Contains("class=\"math\"") || !secondHeadingHtml.Contains("class=\"math\""))
+        throw new Exception($"마크다운 제목 수식 렌더링 실패: h1={firstHeadingHtml}, h2={secondHeadingHtml}");
+    var noteTitleMathRender = MarkdownPreviewRenderer.RenderTitle("평균 $\\bar{x}$ <script>", 1.2, "dark");
+    if (!noteTitleMathRender.Contains("평균 $\\bar{x}$ &lt;script&gt;")
+        || !noteTitleMathRender.Contains("renderMathInElement(document.getElementById('title')")
+        || noteTitleMathRender.Contains("<script></div>"))
+        throw new Exception("노트 제목 수식 렌더링 및 HTML 보호 실패");
 
     var chatGptMathRender = MarkdownPreviewRenderer.Render("인라인 \\(x + y\\)\n\n\\[\n\\sum_{i=1}^{n} x_i\n\\]", root);
     if (!chatGptMathRender.Contains("<span class=\"math\">\\(x + y\\)</span>")

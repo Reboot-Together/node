@@ -8,7 +8,10 @@
       <Grid ColumnDefinitions="*,Auto" ColumnSpacing="6">
         <StackPanel Spacing="2">
           <TextBlock x:Name="DocumentKindText" Text="SIDE NOTE" Foreground="{StaticResource Positive}" FontSize="{Binding Small, Source={StaticResource Typography}}" FontWeight="SemiBold" />
-          <TextBox x:Name="TitleBox" Background="Transparent" BorderThickness="0" Padding="0,3" FontSize="{Binding Title, Source={StaticResource Typography}}" FontWeight="SemiBold" TextChanged="TitleBox_TextChanged" />
+          <Grid Height="30">
+            <WebView2 x:Name="TitlePreview" DefaultBackgroundColor="#1E1E1E" IsHitTestVisible="False" Loaded="TitlePreview_Loaded" />
+            <TextBox x:Name="TitleBox" Background="Transparent" BorderThickness="0" Padding="0,3" FontSize="{Binding Title, Source={StaticResource Typography}}" FontWeight="SemiBold" Opacity="0" TextChanged="TitleBox_TextChanged" GotFocus="TitleBox_GotFocus" LostFocus="TitleBox_LostFocus" />
+          </Grid>
           <TextBlock x:Name="StatusText" Foreground="{StaticResource MutedText}" FontSize="{Binding Small, Source={StaticResource Typography}}" TextTrimming="CharacterEllipsis" Visibility="Collapsed" />
         </StackPanel>
         <Button Grid.Column="1" Content="×" Style="{StaticResource QuietButton}" Padding="7,4" MinWidth="0" VerticalAlignment="Top" Click="Close_Click" ToolTipService.ToolTip="옆 문서 닫기" AutomationProperties.Name="옆 문서 닫기" />

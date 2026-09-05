@@ -23,6 +23,10 @@ public sealed partial class SideDocumentPane : UserControl
     private NoteInfo _note;
     private bool _loading;
     private bool _previewReady;
+    private bool _titlePreviewReady;
+    private WebViewHtmlUpdater? _previewHtmlUpdater;
+    private WebViewHtmlUpdater? _titleHtmlUpdater;
+    private PreviewEditSession? _previewEditSession;
     private double _previewScrollY;
     private double _fontScale;
     private string _accentColor;
@@ -83,6 +87,8 @@ public sealed partial class SideDocumentPane : UserControl
         _loading = true;
         TitleBox.Text = note.Title;
         TitleBox.IsReadOnly = note.IsReadOnly;
+        TitleBox.IsHitTestVisible = !note.IsReadOnly;
+        TitleBox.IsTabStop = !note.IsReadOnly;
         DocumentKindText.Text = note.IsReadOnly ? "GUIDE" : "SIDE NOTE";
         StatusText.Text = note.IsReadOnly ? "읽기 전용 · 앱과 함께 자동 업데이트" : "";
         StatusText.Visibility = note.IsReadOnly ? Visibility.Visible : Visibility.Collapsed;
@@ -105,6 +111,7 @@ public sealed partial class SideDocumentPane : UserControl
             EditorRow.Height = new GridLength(1, GridUnitType.Star);
         }
         _loading = false;
+        ShowRenderedTitle();
         RenderPreview();
     }
 
@@ -118,6 +125,7 @@ public sealed partial class SideDocumentPane : UserControl
                 theme.CssColor.Equals(accentColor, StringComparison.OrdinalIgnoreCase))?.Surface
                 ?? AppearanceThemes.All[0].Surface;
         ApplySurfacePalette();
+        ShowRenderedTitle();
         RenderPreview();
     }
 
@@ -129,6 +137,7 @@ public sealed partial class SideDocumentPane : UserControl
         Editor.Foreground = new SolidColorBrush(surface.PrimaryText);
         Editor.PlaceholderForeground = new SolidColorBrush(surface.PlaceholderText);
         Preview.DefaultBackgroundColor = surface.DocumentBackground;
+        TitlePreview.DefaultBackgroundColor = surface.DocumentBackground;
         SetEditorBrush("TextControlBackground", surface.DocumentBackground);
         SetEditorBrush("TextControlBackgroundPointerOver", surface.DocumentBackground);
         SetEditorBrush("TextControlBackgroundFocused", surface.DocumentBackground);
@@ -180,6 +189,7 @@ public sealed partial class SideDocumentPane : UserControl
                     CoreWebView2HostResourceAccessKind.Allow);
             }
             Preview.CoreWebView2.WebMessageReceived += Preview_WebMessageReceived;
+            _previewHtmlUpdater = new WebViewHtmlUpdater(Preview);
             _previewReady = true;
             RenderPreview();
         }
@@ -193,7 +203,8 @@ public sealed partial class SideDocumentPane : UserControl
     private void RenderPreview()
     {
         if (!_previewReady) return;
-        Preview.NavigateToString(MarkdownPreviewRenderer.Render(
+        _previewEditSession = _note.IsReadOnly ? null : new PreviewEditSession(Editor.Text);
+        _previewHtmlUpdater?.Update(MarkdownPreviewRenderer.Render(
             Editor.Text,
             _workspaceRoot,
             title => _resolveNote(title)?.Body,
@@ -201,7 +212,8 @@ public sealed partial class SideDocumentPane : UserControl
             _previewScrollY,
             _fontScale,
             _accentColor,
-            _surfaceTheme));
+            _surfaceTheme,
+            _previewEditSession));
     }
 
     private void Preview_WebMessageReceived(CoreWebView2 sender, CoreWebView2WebMessageReceivedEventArgs args)
@@ -212,7 +224,23 @@ public sealed partial class SideDocumentPane : UserControl
             var root = message.RootElement;
             if (!root.TryGetProperty("type", out var type)) return;
             var messageType = type.GetString();
-            if (messageType == "workspace-mode-toggle")
+            if (messageType == "inline-edit")
+            {
+                if (_note.IsReadOnly || _previewEditSession is null) return;
+                if (_previewEditSession.TryApply(Editor.Text, root, out var updated))
+                {
+                    Editor.Text = updated;
+                    _previewTimer.Stop();
+                    SaveNow();
+                }
+                else
+                {
+                    StatusText.Text = "원문이 변경되었거나 지원하지 않는 텍스트입니다. 다시 수정해주세요.";
+                    StatusText.Visibility = Visibility.Visible;
+                }
+                RenderPreview();
+            }
+            else if (messageType == "workspace-mode-toggle")
             {
                 WorkspaceModeToggleRequested?.Invoke(this, EventArgs.Empty);
             }
@@ -269,6 +297,51 @@ public sealed partial class SideDocumentPane : UserControl
     }
 
     private void TitleBox_TextChanged(object sender, TextChangedEventArgs e) => QueueSave();
+
+    private void TitleBox_GotFocus(object sender, RoutedEventArgs e)
+    {
+        if (_note.IsReadOnly) return;
+        TitlePreview.Visibility = Visibility.Collapsed;
+        TitleBox.Opacity = 1;
+    }
+
+    private void TitleBox_LostFocus(object sender, RoutedEventArgs e)
+    {
+        if (_loading) return;
+        SaveNow();
+        ShowRenderedTitle();
+    }
+
+    private async void TitlePreview_Loaded(object sender, RoutedEventArgs e)
+    {
+        if (_titlePreviewReady) return;
+        try
+        {
+            await TitlePreview.EnsureCoreWebView2Async();
+            var mathAssetsPath = Path.Combine(AppContext.BaseDirectory, "Assets", "KaTeX");
+            if (Directory.Exists(mathAssetsPath))
+                TitlePreview.CoreWebView2.SetVirtualHostNameToFolderMapping(
+                    "node-assets.local", mathAssetsPath, CoreWebView2HostResourceAccessKind.Allow);
+            _titleHtmlUpdater = new WebViewHtmlUpdater(TitlePreview);
+            _titlePreviewReady = true;
+            ShowRenderedTitle();
+        }
+        catch
+        {
+            TitlePreview.Visibility = Visibility.Collapsed;
+            TitleBox.Opacity = 1;
+        }
+    }
+
+    private void ShowRenderedTitle()
+    {
+        if (!_titlePreviewReady || TitleBox.FocusState != FocusState.Unfocused && !_note.IsReadOnly) return;
+        TitleBox.Opacity = 0;
+        TitleBox.IsHitTestVisible = !_note.IsReadOnly;
+        TitleBox.IsTabStop = !_note.IsReadOnly;
+        TitlePreview.Visibility = Visibility.Visible;
+        _titleHtmlUpdater?.Update(MarkdownPreviewRenderer.RenderTitle(TitleBox.Text, _fontScale, _surfaceTheme));
+    }
 
     private void Editor_TextChanged(object sender, TextChangedEventArgs e)
     {

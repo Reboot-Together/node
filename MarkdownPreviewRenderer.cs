@@ -3,18 +3,31 @@ using System.Text;
 using System.Text.Json;
 using System.Text.RegularExpressions;
 using Markdig;
+using Markdig.Renderers;
 using Markdig.Renderers.Html;
 using Markdig.Syntax;
+using Markdig.Syntax.Inlines;
 
 namespace AsterismApp;
 
 public static class MarkdownPreviewRenderer
 {
-    private static readonly MarkdownPipeline Pipeline = new MarkdownPipelineBuilder()
-        .UseAdvancedExtensions()
-        .UseYamlFrontMatter()
-        .UseSoftlineBreakAsHardlineBreak()
-        .Build();
+    private static readonly MarkdownPipeline Pipeline = CreatePipeline();
+
+    private static MarkdownPipeline CreatePipeline()
+    {
+        var builder = new MarkdownPipelineBuilder()
+            .UseAdvancedExtensions()
+            .UseYamlFrontMatter()
+            .UseSoftlineBreakAsHardlineBreak()
+            .UsePreciseSourceLocation();
+        // Generic attributes interpret LaTeX groups such as \bar{x} as heading attributes.
+        // Asterism does not expose that Markdown extension, so favor intact math everywhere.
+        var genericAttributes = builder.Extensions.FirstOrDefault(extension =>
+            extension is Markdig.Extensions.GenericAttributes.GenericAttributesExtension);
+        if (genericAttributes is not null) builder.Extensions.Remove(genericAttributes);
+        return builder.Build();
+    }
 
     public static string Render(
         string markdown,
@@ -24,21 +37,62 @@ public static class MarkdownPreviewRenderer
         double initialScrollY = 0,
         double fontScale = 1,
         string accentColor = "#D1AF61",
-        string surfaceTheme = "dark")
+        string surfaceTheme = "dark",
+        PreviewEditSession? editSession = null)
     {
-        var body = CodeSyntaxHighlighter.HighlightBlocks(RenderBody(markdown, vaultPath, resolveNote, 0));
+        var body = CodeSyntaxHighlighter.HighlightBlocks(RenderBody(markdown, vaultPath, resolveNote, 0, editSession));
         body = Regex.Replace(body, "<script[^>]*>.*?</script>", "", RegexOptions.IgnoreCase | RegexOptions.Singleline);
         body = Regex.Replace(body, "\\s+on[a-z]+\\s*=\\s*(['\"]).*?\\1", "", RegexOptions.IgnoreCase | RegexOptions.Singleline);
         body = Regex.Replace(body, "href=(['\"])javascript:.*?\\1", "href=\"#\"", RegexOptions.IgnoreCase);
         body = Regex.Replace(body, "href=\"(?![a-z]+:|#)([^\"]+?)(?:\\.md)?(?:#[^\"]*)?\"", match => $"href=\"node-note://note/{Uri.EscapeDataString(WebUtility.HtmlDecode(match.Groups[1].Value).Replace("%20", " "))}\"");
         fontScale = Math.Clamp(fontScale, .8, 1.4);
         if (!Regex.IsMatch(accentColor, "^#[0-9a-fA-F]{6}$")) accentColor = "#D1AF61";
-        return HtmlShell(body, foldStates, initialScrollY, fontScale, accentColor, surfaceTheme);
+        return HtmlShell(body, foldStates, initialScrollY, fontScale, accentColor, surfaceTheme, editSession?.Id);
     }
 
-    private static string RenderBody(string markdown, string vaultPath, Func<string, string?>? resolveNote, int depth)
+    public static string RenderTitle(string title, double fontScale = 1, string surfaceTheme = "dark")
     {
-        var prepared = Prepare(MarkdownText.NormalizeNewlines(markdown), vaultPath, resolveNote, depth);
+        fontScale = Math.Clamp(fontScale, .8, 1.4);
+        var surface = CssSurfaceFor(surfaceTheme);
+        var colorScheme = surface.IsLight ? "light" : "dark";
+        var scale = fontScale.ToString("0.##", System.Globalization.CultureInfo.InvariantCulture);
+        var safeTitle = WebUtility.HtmlEncode(NormalizeMathDelimiters(MarkdownText.NormalizeTitle(title)));
+        return $$"""
+        <!doctype html>
+        <html>
+        <head>
+          <meta charset="utf-8">
+          <meta name="color-scheme" content="{{colorScheme}}">
+          <link rel="stylesheet" href="https://node-assets.local/katex.min.css">
+          <script src="https://node-assets.local/katex.min.js"></script>
+          <script src="https://node-assets.local/auto-render.min.js"></script>
+          <style>
+            *{box-sizing:border-box}html,body{width:100%;height:100%;margin:0;overflow:hidden;background:{{surface.DocumentBackground}};color:{{(surface.IsLight ? "#111111" : "#F0F0F0")}}}
+            body{display:flex;align-items:center;font:700 calc(13.3px * {{scale}})/1.35 'Segoe UI Variable Text','Segoe UI','Malgun Gothic',sans-serif;letter-spacing:-.012em;white-space:nowrap}
+            #title{min-width:0;max-width:100%;overflow:hidden;text-overflow:ellipsis}.katex{font-size:1em}
+          </style>
+        </head>
+        <body><div id="title">{{safeTitle}}</div>
+          <script>
+            if (window.renderMathInElement) renderMathInElement(document.getElementById('title'), {
+              delimiters: [
+                { left: '$$', right: '$$', display: false },
+                { left: '\\[', right: '\\]', display: false },
+                { left: '$', right: '$', display: false },
+                { left: '\\(', right: '\\)', display: false }
+              ],
+              throwOnError: false, strict: false, trust: false
+            });
+          </script>
+        </body>
+        </html>
+        """;
+    }
+
+    private static string RenderBody(string markdown, string vaultPath, Func<string, string?>? resolveNote, int depth, PreviewEditSession? editSession = null)
+    {
+        markdown = MarkdownText.NormalizeNewlines(markdown);
+        var prepared = Prepare(markdown, vaultPath, resolveNote, depth);
         var document = Markdown.Parse(prepared.Text, Pipeline);
         if (depth == 0)
         {
@@ -50,7 +104,75 @@ public static class MarkdownPreviewRenderer
                 attributes.AddProperty("data-source-offset", prepared.SourceOffsets[block.Line].ToString());
             }
         }
-        return Markdown.ToHtml(document, Pipeline);
+        if (editSession is null) return Markdown.ToHtml(document, Pipeline);
+        using var writer = new StringWriter();
+        var renderer = new HtmlRenderer(writer);
+        Pipeline.Setup(renderer);
+        renderer.ObjectRenderers.Insert(0, new EditableLiteralRenderer(markdown, prepared, editSession));
+        renderer.Render(document);
+        return writer.ToString();
+    }
+
+    private sealed class EditableLiteralRenderer(string source, PreparedMarkdown prepared, PreviewEditSession session)
+        : HtmlObjectRenderer<LiteralInline>
+    {
+        private readonly string[] _lines = prepared.Text.Split('\n');
+        private readonly int[] _lineStarts = GetLineStarts(prepared.Text);
+        private readonly HashSet<LiteralInline> _combined = [];
+
+        private static int[] GetLineStarts(string text)
+        {
+            var starts = new List<int> { 0 };
+            for (var index = 0; index < text.Length; index++)
+                if (text[index] == '\n') starts.Add(index + 1);
+            return starts.ToArray();
+        }
+
+        protected override void Write(HtmlRenderer renderer, LiteralInline literal)
+        {
+            if (_combined.Contains(literal)) return;
+            var text = literal.Content.ToString();
+            var start = EditableStart(literal, text);
+            if (start >= 0)
+            {
+                var length = literal.Span.Length;
+                // Markdig splits escaped punctuation into adjacent literals; keep one editing field.
+                for (var next = literal.NextSibling as LiteralInline; next is not null; next = next.NextSibling as LiteralInline)
+                {
+                    var nextText = next.Content.ToString();
+                    if (EditableStart(next, nextText) != start + length) break;
+                    text += nextText;
+                    length += next.Span.Length;
+                    _combined.Add(next);
+                }
+                session.Register(start, source.Substring(start, length));
+                renderer.Write($"<span class=\"editable-text\" data-edit-start=\"{start}\" data-edit-length=\"{length}\" title=\"더블클릭하여 텍스트 수정 · Alt+클릭으로 원문 이동\">");
+            }
+            renderer.WriteEscape(text);
+            if (start >= 0) renderer.Write("</span>");
+        }
+
+        private int EditableStart(LiteralInline literal, string text)
+        {
+            if (string.IsNullOrWhiteSpace(text) || literal.Line < 0 || literal.Line >= prepared.SourceOffsets.Count)
+                return -1;
+            for (var parent = literal.Parent; parent is not null; parent = parent.Parent)
+                if (parent.GetType() != typeof(ContainerInline) && parent is not EmphasisInline) return -1;
+            var container = literal.Parent;
+            while (container?.Parent is not null) container = container.Parent;
+            if (container?.ParentBlock is not (ParagraphBlock or HeadingBlock)) return -1;
+            var line = _lines[literal.Line];
+            // Transclusions, callouts, HTML and math have transformed coordinates or their own renderer.
+            if (line.IndexOfAny(['$', '<']) >= 0) return -1;
+            var originalLineStart = prepared.SourceOffsets[literal.Line];
+            var originalLineEnd = source.IndexOf('\n', originalLineStart);
+            if (originalLineEnd < 0) originalLineEnd = source.Length;
+            if (source[originalLineStart..originalLineEnd] != line) return -1;
+            var column = literal.Span.Start - _lineStarts[literal.Line];
+            if (column < 0 || literal.Span.Length <= 0 || column + literal.Span.Length > line.Length) return -1;
+            var raw = line.Substring(column, literal.Span.Length);
+            return PreviewEditSession.DecodeLiteral(raw) == text ? originalLineStart + column : -1;
+        }
     }
 
     private sealed record PreparedMarkdown(string Text, IReadOnlyList<int> SourceOffsets);
@@ -67,20 +189,40 @@ public static class MarkdownPreviewRenderer
         }
         var output = new StringBuilder();
         var sourceOffsets = new List<int>();
-        var fenced = false;
+        // Parse fences/HTML/front matter before preprocessing, including nested and long fences.
+        var protectedLines = new HashSet<int>();
+        foreach (var block in Markdown.Parse(markdown, Pipeline).Descendants<Block>())
+        {
+            if (block is not (FencedCodeBlock or HtmlBlock or Markdig.Extensions.Yaml.YamlFrontMatterBlock)) continue;
+            var last = block.Line + markdown.AsSpan(block.Span.Start, block.Span.Length).Count('\n');
+            for (var lineIndex = block.Line; lineIndex <= last; lineIndex++) protectedLines.Add(lineIndex);
+        }
         var comment = false;
+        var mathBlock = false;
 
         for (var index = 0; index < lines.Length; index++)
         {
             var line = lines[index];
             var trimmed = line.TrimStart();
-            if (trimmed.StartsWith("```") || trimmed.StartsWith("~~~"))
+            if (protectedLines.Contains(index))
             {
-                fenced = !fenced;
                 AppendMappedLine(output, sourceOffsets, line, lineOffsets[index]);
                 continue;
             }
-            if (fenced) { AppendMappedLine(output, sourceOffsets, line, lineOffsets[index]); continue; }
+            if (trimmed is "$$" or "\\[" or "\\]") mathBlock = !mathBlock;
+            if (!comment && !mathBlock && TextDiagramRenderer.TryRead(lines, index, out var diagramEnd)
+                && !Enumerable.Range(index, diagramEnd - index).Any(protectedLines.Contains))
+            {
+                var diagram = string.Join('\n', lines[index..diagramEnd]);
+                var endOffset = lineOffsets[diagramEnd - 1] + lines[diagramEnd - 1].Length;
+                // Empty lines isolate raw HTML even when the source has no surrounding blank lines.
+                AppendMappedLine(output, sourceOffsets, "", lineOffsets[index]);
+                AppendMappedLine(output, sourceOffsets, TextDiagramRenderer.Render(diagram,
+                    depth == 0 ? lineOffsets[index] : null, depth == 0 ? endOffset : null), lineOffsets[index]);
+                AppendMappedLine(output, sourceOffsets, "", endOffset);
+                index = diagramEnd - 1;
+                continue;
+            }
 
             line = NormalizeMathDelimiters(line);
             line = RemoveComments(line, ref comment);
@@ -190,10 +332,12 @@ public static class MarkdownPreviewRenderer
         double initialScrollY,
         double fontScale,
         string accentColor,
-        string surfaceTheme)
+        string surfaceTheme,
+        string? editSessionId)
     {
         var surface = CssSurfaceFor(surfaceTheme);
         var serializedFoldStates = JsonSerializer.Serialize(foldStates ?? new Dictionary<string, bool>());
+        var serializedEditSession = JsonSerializer.Serialize(editSessionId);
         var serializedScrollY = JsonSerializer.Serialize(double.IsFinite(initialScrollY) && initialScrollY > 0 ? initialScrollY : 0);
         var serializedFontScale = fontScale.ToString("0.##", System.Globalization.CultureInfo.InvariantCulture);
         var colorScheme = surface.IsLight ? "light" : "dark";
@@ -245,6 +389,8 @@ public static class MarkdownPreviewRenderer
             .md-section>.md-summary>h1,.md-section>.md-summary>h2,.md-section>.md-summary>h3,.md-section>.md-summary>h4,.md-section>.md-summary>h5,.md-section>.md-summary>h6{flex:1;margin:0;padding:7px 0;border:0}.md-section[data-level='1']>.md-summary>h1{font-size:calc(13.3px * var(--font-scale))}.md-section[data-level='2']>.md-summary>h2{font-size:calc(11.9px * var(--font-scale))}.md-section[data-level='3']>.md-summary>h3{font-size:calc(10.5px * var(--font-scale))}.md-section[data-level='4']>.md-summary>h4{font-size:calc(9.8px * var(--font-scale))}.md-section[data-level='5']>.md-summary>h5{font-size:calc(9.1px * var(--font-scale))}.md-section[data-level='6']>.md-summary>h6{font-size:calc(8.4px * var(--font-scale))}
             .md-section>.md-section-body{padding:11px 0 15px 21px}.md-section>.md-section-body>.md-section{border-bottom:0;border-top:1px solid var(--border)}.md-section>.md-section-body>:last-child{margin-bottom:0}
             .source-hover{outline:1px solid color-mix(in srgb,var(--accent) 45%,transparent);outline-offset:3px;border-radius:3px;cursor:text}
+            .editable-text{cursor:text}.inline-text-input{font:inherit;color:inherit;background:var(--card);border:1px solid var(--accent);border-radius:3px;padding:2px 4px;max-width:100%;outline:none}.inline-edit-help{position:fixed;bottom:10px;left:10px;z-index:100;background:var(--card);color:var(--primary);border:1px solid var(--border);border-radius:5px;padding:6px 10px;font:12px 'Segoe UI',sans-serif}
+            pre.text-diagram{padding:18px 20px;max-width:100%;overflow-x:auto;white-space:pre;overflow-wrap:normal;word-break:normal;tab-size:4}pre.text-diagram::before{content:none}pre.text-diagram code{font-family:'D2Coding','NanumGothicCoding','Cascadia Mono','Consolas','GulimChe',monospace;font-size:calc(10.5px * var(--font-scale));line-height:1.6;font-variant-ligatures:none;letter-spacing:0;white-space:pre;overflow-wrap:normal;word-break:normal}.diagram-connector{color:var(--secondary)}.diagram-wide{display:inline-block;text-align:center}
             @media(max-width:700px){body{padding:18px 20px 56px}table{font-size:calc(8.4px * var(--font-scale))}th,td{padding:7px 6px}.md-section>.md-section-body{padding-left:17px} }
           </style>
         </head>
@@ -255,7 +401,34 @@ public static class MarkdownPreviewRenderer
               const root = document.body;
               const initialFoldStates = {{serializedFoldStates}};
               const initialScrollY = {{serializedScrollY}};
+              const editSession = {{serializedEditSession}};
+              let activeEdit = null;
+              const finishEdit = commit => {
+                if (!activeEdit) return;
+                const { span, input, original, help } = activeEdit;
+                const value = input.value;
+                if (commit && (!value.trim() || /[\r\n\t$]/.test(value))) {
+                  help.textContent = '빈 내용·줄바꿈·수식은 아래 원문 편집창에서 수정해주세요. Esc: 취소';
+                  input.focus();
+                  return;
+                }
+                activeEdit = null;
+                span.textContent = original;
+                help.remove();
+                if (commit && value !== original) {
+                  window.chrome.webview.postMessage({ type: 'inline-edit', session: editSession, start: Number(span.dataset.editStart), text: value });
+                }
+              };
               document.addEventListener('keydown', event => {
+                if (activeEdit) {
+                  if (event.isComposing) return;
+                  if (event.key === 'Escape' || (event.key === 'Enter' && event.ctrlKey)) {
+                    event.preventDefault();
+                    event.stopPropagation();
+                    finishEdit(event.key !== 'Escape');
+                  }
+                  return;
+                }
                 if (event.ctrlKey && !event.altKey && !event.metaKey && event.key.toLowerCase() === 'g') {
                   event.preventDefault();
                   event.stopPropagation();
@@ -301,9 +474,9 @@ public static class MarkdownPreviewRenderer
               }
               const sourceTarget = event => {
                 const element = event.target instanceof Element ? event.target : event.target.parentElement;
-                if (!element || element.closest('.fold-tools,a,button,input,textarea,select,summary,img')) return null;
+                if (activeEdit || !element || element.closest('.fold-tools,a,button,input,textarea,select,summary,img')) return null;
                 if (window.getSelection()?.toString()) return null;
-                return element.closest('[data-source-offset]');
+                return element.closest('.editable-text') ?? element.closest('[data-source-offset]');
               };
               const sourceOffsets = Array.from(new Set(Array.from(document.querySelectorAll('[data-source-offset]'))
                 .map(element => Number(element.dataset.sourceOffset))
@@ -314,9 +487,9 @@ public static class MarkdownPreviewRenderer
                   window.chrome.webview.postMessage({ type: 'hover-editor-clear' });
                   return;
                 }
-                const offset = Number(element.dataset.sourceOffset);
+                const offset = Number(element.dataset.editStart ?? element.dataset.sourceOffset);
                 if (!Number.isInteger(offset) || offset < 0) return;
-                const endOffset = sourceOffsets.find(candidate => candidate > offset) ?? -1;
+                const endOffset = element.dataset.editLength ? offset + Number(element.dataset.editLength) : element.dataset.sourceEnd ? Number(element.dataset.sourceEnd) : sourceOffsets.find(candidate => candidate > offset) ?? -1;
                 window.chrome.webview.postMessage({ type: 'hover-editor', offset, endOffset });
               };
               let hoveredSource = null;
@@ -334,13 +507,46 @@ public static class MarkdownPreviewRenderer
                 postEditorHover(null);
               });
               document.addEventListener('click', event => {
-                const element = sourceTarget(event);
+                if (activeEdit || event.target.closest?.('.inline-text-input')) return;
+                if (event.target.closest?.('.editable-text') && !event.altKey) {
+                  event.preventDefault();
+                  return;
+                }
+                const element = event.altKey ? event.target.closest?.('.editable-text') ?? sourceTarget(event) : sourceTarget(event);
                 if (!element) return;
-                const offset = Number(element.dataset.sourceOffset);
+                const offset = Number(element.dataset.editStart ?? element.dataset.sourceOffset);
                 if (!Number.isInteger(offset) || offset < 0) return;
                 event.preventDefault();
                 event.stopPropagation();
                 window.chrome.webview.postMessage({ type: 'focus-editor', offset });
+              });
+              document.addEventListener('dblclick', event => {
+                const span = event.target.closest?.('.editable-text');
+                if (!editSession || !span || activeEdit || span.closest('a,pre,code,.katex')) return;
+                event.preventDefault();
+                event.stopPropagation();
+                hoveredSource?.classList.remove('source-hover');
+                hoveredSource = null;
+                postEditorHover(null);
+                const original = span.textContent;
+                const width = Math.max(140, span.getBoundingClientRect().width + 24);
+                const input = document.createElement('input');
+                input.type = 'text';
+                input.className = 'inline-text-input';
+                input.setAttribute('aria-label', '미리보기 텍스트 수정');
+                input.value = original;
+                input.maxLength = 16000;
+                input.style.width = `${width}px`;
+                const help = document.createElement('div');
+                help.className = 'inline-edit-help';
+                help.setAttribute('role', 'status');
+                help.textContent = '텍스트 수정 · Ctrl+Enter 또는 바깥 클릭: 반영 · Esc: 취소';
+                activeEdit = { span, input, original, help };
+                span.replaceChildren(input);
+                root.append(help);
+                input.addEventListener('blur', () => finishEdit(true));
+                input.focus();
+                input.select();
               });
               const elementOf = node => node instanceof Element ? node : node?.parentElement;
               document.addEventListener('copy', event => {
@@ -350,6 +556,10 @@ public static class MarkdownPreviewRenderer
                 const endPre = elementOf(selection.focusNode)?.closest('pre');
                 if (!startPre || startPre !== endPre) return;
                 event.preventDefault();
+                if (startPre.classList.contains('text-diagram')) {
+                  event.clipboardData.setData('text/plain', selection.getRangeAt(0).cloneContents().textContent);
+                  return;
+                }
                 event.clipboardData.setData('text/plain', selection.toString());
               });
               if (sectionCount) {

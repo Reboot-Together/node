@@ -22,6 +22,8 @@ public sealed partial class MainWindow
         new(StringComparer.OrdinalIgnoreCase);
     private IReadOnlyDictionary<string, int> _graphRelationshipDepths =
         new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+    private double _graphContentOffsetX;
+    private double _graphContentOffsetY;
     private GraphLayout? _activeGraphLayout;
     private readonly List<GraphEdgeVisual> _graphEdgeVisuals = [];
     private readonly List<UIElement> _graphLabelElements = [];
@@ -104,11 +106,12 @@ public sealed partial class MainWindow
         if (Math.Abs(nextZoom - previousZoom) < .001) return;
 
         var pointer = e.GetCurrentPoint(GraphScroll).Position;
-        var targetOffset = GraphViewportService.CalculateZoomedViewportOffset(
+        var targetOffset = GraphViewportService.CalculateCenteredZoomedViewportOffset(
             new GraphPoint(GraphScroll.HorizontalOffset, GraphScroll.VerticalOffset),
             new GraphPoint(pointer.X, pointer.Y),
-            nextZoom / previousZoom,
-            new GraphPoint(GraphLogicalWidth * nextZoom, GraphLogicalHeight * nextZoom),
+            previousZoom,
+            nextZoom,
+            new GraphPoint(GraphLogicalWidth, GraphLogicalHeight),
             new GraphPoint(GraphScroll.ViewportWidth, GraphScroll.ViewportHeight));
         var viewportRevision = ++_graphViewportRevision;
 
@@ -128,8 +131,12 @@ public sealed partial class MainWindow
         var viewportRevision = centerCurrentNode ? ++_graphViewportRevision : _graphViewportRevision;
 
         GraphZoomText.Text = $"{_graphZoom:P0}";
-        GraphCanvas.Width = GraphLogicalWidth * _graphZoom;
-        GraphCanvas.Height = GraphLogicalHeight * _graphZoom;
+        var scaledWidth = GraphLogicalWidth * _graphZoom;
+        var scaledHeight = GraphLogicalHeight * _graphZoom;
+        GraphCanvas.Width = Math.Max(scaledWidth, GraphScroll.ViewportWidth);
+        GraphCanvas.Height = Math.Max(scaledHeight, GraphScroll.ViewportHeight);
+        _graphContentOffsetX = (GraphCanvas.Width - scaledWidth) / 2;
+        _graphContentOffsetY = (GraphCanvas.Height - scaledHeight) / 2;
         StopGraphTwinkles();
         GraphCanvas.Children.Clear();
         _graphEdgeVisuals.Clear();
@@ -230,10 +237,17 @@ public sealed partial class MainWindow
         GraphScroll.ChangeView(horizontal, vertical, null, true);
     }
 
-    private GraphPoint ScaleGraphPoint(GraphPoint point) => new(point.X * _graphZoom, point.Y * _graphZoom);
+    private GraphPoint ScaleGraphPoint(GraphPoint point) => new(
+        point.X * _graphZoom + _graphContentOffsetX,
+        point.Y * _graphZoom + _graphContentOffsetY);
 
     private void GraphScroll_SizeChanged(object sender, SizeChangedEventArgs e)
     {
+        if (_constellationMode)
+        {
+            DrawGraph();
+            return;
+        }
         var viewportRevision = ++_graphViewportRevision;
         DispatcherQueue.TryEnqueue(() =>
         {

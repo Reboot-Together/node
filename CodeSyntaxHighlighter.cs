@@ -10,7 +10,7 @@ public static class CodeSyntaxHighlighter
         "<pre(?<pre>[^>]*)><code(?<code>[^>]*)>(?<body>.*?)</code></pre>",
         RegexOptions.IgnoreCase | RegexOptions.Singleline | RegexOptions.Compiled);
     private static readonly Regex LanguagePattern = new(
-        "(?:^|\\s)language-(?<language>[a-zA-Z0-9_+#.-]+)",
+        "(?:^|[\\s\"'])language-(?<language>[a-zA-Z0-9_+#.-]+)",
         RegexOptions.IgnoreCase | RegexOptions.Compiled);
 
     private static readonly IReadOnlyDictionary<string, HashSet<string>> Keywords =
@@ -34,9 +34,17 @@ public static class CodeSyntaxHighlighter
     public static string HighlightBlocks(string html) => CodeBlockPattern.Replace(html, match =>
     {
         var preAttributes = match.Groups["pre"].Value;
+        if (preAttributes.Contains("text-diagram", StringComparison.Ordinal)) return match.Value;
         var codeAttributes = match.Groups["code"].Value;
         var languageMatch = LanguagePattern.Match(codeAttributes);
         var decoded = WebUtility.HtmlDecode(match.Groups["body"].Value);
+        if ((!languageMatch.Success || languageMatch.Groups["language"].Value.ToLowerInvariant() is "text" or "txt" or "plaintext")
+            && TextDiagramRenderer.IsWholeDiagram(decoded))
+        {
+            var diagram = TextDiagramRenderer.Render(decoded);
+            // The original code block retains its source mapping and other Markdown attributes.
+            return $"<div{preAttributes}>{diagram}</div>";
+        }
         var language = NormalizeLanguage(languageMatch.Success ? languageMatch.Groups["language"].Value : DetectLanguage(decoded));
         var label = language.Length == 0 ? "CODE" : language.ToUpperInvariant();
         var highlighted = Highlight(decoded, language);
