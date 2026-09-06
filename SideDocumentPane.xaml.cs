@@ -51,6 +51,12 @@ public sealed partial class SideDocumentPane : UserControl
         _surfaceTheme = surfaceTheme;
         InitializeComponent();
         ApplySurfacePalette();
+        AddHandler(
+            UIElement.PointerPressedEvent,
+            new PointerEventHandler((_, _) => InteractionStarted?.Invoke(this, EventArgs.Empty)),
+            handledEventsToo: true);
+        GotFocus += (_, _) => InteractionStarted?.Invoke(this, EventArgs.Empty);
+        Preview.GotFocus += (_, _) => InteractionStarted?.Invoke(this, EventArgs.Empty);
 
         _saveTimer = DispatcherQueue.CreateTimer();
         _saveTimer.Interval = TimeSpan.FromMilliseconds(700);
@@ -68,19 +74,21 @@ public sealed partial class SideDocumentPane : UserControl
 
     public event EventHandler? CloseRequested;
     public event EventHandler? WorkspaceModeToggleRequested;
+    public event EventHandler? InteractionStarted;
 
     public string NotePath => _note.Path;
     public NoteInfo CurrentNote => _note;
 
     public void FocusEditor()
     {
+        InteractionStarted?.Invoke(this, EventArgs.Empty);
         if (_note.IsReadOnly) Preview.Focus(FocusState.Programmatic);
         else Editor.Focus(FocusState.Programmatic);
     }
 
-    public void LoadNote(NoteInfo note, bool saveCurrent = true)
+    public bool LoadNote(NoteInfo note, bool saveCurrent = true)
     {
-        if (saveCurrent) SaveNow();
+        if (saveCurrent && !SaveNow()) return false;
         _note = note;
         _foldStates.Clear();
         _previewScrollY = 0;
@@ -113,6 +121,7 @@ public sealed partial class SideDocumentPane : UserControl
         _loading = false;
         ShowRenderedTitle();
         RenderPreview();
+        return true;
     }
 
     public void RefreshAppearance(double fontScale, string accentColor, string surfaceTheme)
@@ -151,13 +160,13 @@ public sealed partial class SideDocumentPane : UserControl
         if (Editor.Resources[key] is SolidColorBrush brush) brush.Color = color;
     }
 
-    public void SaveNow()
+    public bool SaveNow()
     {
-        if (_loading || _note.IsReadOnly) return;
+        if (_loading || _note.IsReadOnly) return true;
         _saveTimer.Stop();
         var title = MarkdownText.NormalizeTitle(TitleBox.Text);
         var body = MarkdownText.NormalizeNewlines(Editor.Text).Trim();
-        if (_note.Title == title && _note.Body == body) return;
+        if (_note.Title == title && _note.Body == body) return true;
 
         try
         {
@@ -166,11 +175,13 @@ public sealed partial class SideDocumentPane : UserControl
             TitleBox.Text = _note.Title;
             StatusText.Visibility = Visibility.Collapsed;
             _loading = false;
+            return true;
         }
         catch (Exception exception)
         {
             StatusText.Text = $"저장 실패 · {exception.Message}";
             StatusText.Visibility = Visibility.Visible;
+            return false;
         }
     }
 
@@ -421,7 +432,7 @@ public sealed partial class SideDocumentPane : UserControl
 
     private void Close_Click(object sender, RoutedEventArgs e)
     {
-        SaveNow();
+        if (!SaveNow()) return;
         _saveTimer.Stop();
         _previewTimer.Stop();
         CloseRequested?.Invoke(this, EventArgs.Empty);

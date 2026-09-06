@@ -2,6 +2,7 @@ using System.Diagnostics;
 using System.Text.Json;
 using Microsoft.UI.Input;
 using Microsoft.UI.Dispatching;
+using Microsoft.UI.Windowing;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Controls.Primitives;
@@ -48,6 +49,7 @@ public sealed partial class MainWindow : Window
     private int _previewHoverOriginalStart;
     private int _previewHoverOriginalLength;
     private int _previewHoverSelectionRevision;
+    private bool _suppressNoteListSelectionChanged;
 
     public MainWindow()
     {
@@ -74,8 +76,15 @@ public sealed partial class MainWindow : Window
         _previewTimer.IsRepeating = false;
         _previewTimer.Tick += (_, _) => UpdateMarkdownPreview();
         MarkdownPreview.Loaded += MarkdownPreview_Loaded;
+        DocumentPanel.AddHandler(
+            UIElement.PointerPressedEvent,
+            new PointerEventHandler((_, _) => ActivatePrimaryDocument()),
+            handledEventsToo: true);
+        DocumentPanel.GotFocus += (_, _) => ActivatePrimaryDocument();
+        MarkdownPreview.GotFocus += (_, _) => ActivatePrimaryDocument();
         RefreshNotes();
         if (_notes.Count == 0) NewNote(); else Select(_notes[0]);
+        AppWindow.Closing += AppWindow_Closing;
         Activated += (_, args) =>
         {
             if (args.WindowActivationState == WindowActivationState.Deactivated)
@@ -121,11 +130,12 @@ public sealed partial class MainWindow : Window
     private void ApplySearch()
     {
         var query = SearchBox?.Text.Trim() ?? "";
-        var preferredFolders = _selected is null
+        var activeNote = ActiveDocumentNote;
+        var preferredFolders = activeNote is null
             ? []
-            : _selected.IsReadOnly
+            : activeNote.IsReadOnly
                 ? [BuiltInGuideService.FolderPath]
-                : _vaultTreeService.AncestorFolders(_workspace.RootPath, _selected.Path);
+                : _vaultTreeService.AncestorFolders(_workspace.RootPath, activeNote.Path);
         _folderExpansionService.EnforceExclusive(
             _workspace.RootPath,
             ExplorerFolders,
@@ -133,10 +143,18 @@ public sealed partial class MainWindow : Window
             preferredFolders);
         var items = _vaultTreeService.Build(_workspace.RootPath, _notes, _folders, _expandedFolders, query).ToList();
         items.InsertRange(0, _guideService.BuildItems(_expandedFolders, query));
-        _vaultItems = items;
-        NoteList.ItemsSource = _vaultItems;
-        if (_selected is not null)
-            NoteList.SelectedItem = _vaultItems.FirstOrDefault(item => item.Note?.Path == _selected.Path);
+        _suppressNoteListSelectionChanged = true;
+        try
+        {
+            _vaultItems = items;
+            NoteList.ItemsSource = _vaultItems;
+            if (activeNote is not null)
+                NoteList.SelectedItem = _vaultItems.FirstOrDefault(item => item.Note?.Path == activeNote.Path);
+        }
+        finally
+        {
+            _suppressNoteListSelectionChanged = false;
+        }
     }
 
     private void NewNote(string? parentFolder = null)
@@ -152,6 +170,11 @@ public sealed partial class MainWindow : Window
 
     private void Select(NoteInfo note, bool focusEditor = false)
     {
+        var requestedPath = note.Path;
+        SaveCurrent();
+        note = _notes.FirstOrDefault(candidate =>
+            candidate.Path.Equals(requestedPath, StringComparison.OrdinalIgnoreCase)) ?? note;
+
         CaptureCurrentGraphViewport();
         _previewHoverSelectionActive = false;
         _previewHoverSelectionRevision++;
@@ -170,6 +193,28 @@ public sealed partial class MainWindow : Window
         DrawGraph(centerCurrentNode: !restoreGraphViewport);
         if (restoreGraphViewport) RestoreGraphViewport(note);
         if (focusEditor) DispatcherQueue.TryEnqueue(() => Editor.Focus(FocusState.Programmatic));
+    }
+
+    private void AppWindow_Closing(AppWindow sender, AppWindowClosingEventArgs args)
+    {
+        try
+        {
+            _saveTimer.Stop();
+            _previewTimer.Stop();
+            if (!SaveSideDocuments())
+            {
+                args.Cancel = true;
+                _ = ShowMessage("앱을 닫을 수 없음", "저장하지 못한 옆 문서가 있습니다. 문서에 표시된 저장 오류를 확인해 주세요.");
+                return;
+            }
+
+            SaveCurrent();
+        }
+        catch (Exception exception)
+        {
+            args.Cancel = true;
+            _ = ShowMessage("앱을 닫을 수 없음", $"현재 노트를 저장하지 못했습니다.\n\n{exception.Message}");
+        }
     }
 
     private void RevealNoteInTree(NoteInfo note)
@@ -208,10 +253,19 @@ public sealed partial class MainWindow : Window
         }
         if (item is null) return;
 
-        NoteList.SelectedItem = item;
+        _suppressNoteListSelectionChanged = true;
+        try
+        {
+            NoteList.SelectedItem = item;
+        }
+        finally
+        {
+            _suppressNoteListSelectionChanged = false;
+        }
         DispatcherQueue.TryEnqueue(() =>
         {
-            if (_selected?.Path == note.Path) NoteList.ScrollIntoView(item);
+            if (NoteList.SelectedItem is VaultItem selectedItem && selectedItem.Note?.Path == note.Path)
+                NoteList.ScrollIntoView(item);
         });
     }
 
@@ -589,6 +643,7 @@ public sealed partial class MainWindow : Window
             }
             else if (messageType is "workspace-mode-toggle" or "workspace-mode-document")
             {
+                ActivatePrimaryDocument();
                 HandleWorkspaceModeMessage(messageType);
             }
             else if (messageType == "fold-state"
@@ -791,12 +846,22 @@ public sealed partial class MainWindow : Window
         if (selected is not null) Select(selected);
         else if (_notes.Count > 0) Select(_notes[0]);
     }
-    private void NoteList_SelectionChanged(object sender, SelectionChangedEventArgs e) { if (!_loading && NoteList.SelectedItem is VaultItem { Note: NoteInfo note } && note.Path != _selected?.Path) { SaveCurrent(); Select(note); } }
-    private void BacklinkList_SelectionChanged(object sender, SelectionChangedEventArgs e) { if (BacklinkList.SelectedItem is NoteInfo note && note.Path != _selected?.Path) { SaveCurrent(); Select(note); } }
-    private void UpdateBacklinks()
+    private void NoteList_SelectionChanged(object sender, SelectionChangedEventArgs e)
     {
-        if (_selected is null) { BacklinkTitle.Text = "이 노트를 언급한 노트"; BacklinkList.ItemsSource = Array.Empty<NoteInfo>(); return; }
-        var backlinks = _notes.Where(note => _noteLinks.TryGetValue(note.Title, out var targets) && targets.Contains(_selected.Title, StringComparer.OrdinalIgnoreCase)).ToList();
+        if (_loading || _suppressNoteListSelectionChanged) return;
+        if (NoteList.SelectedItem is VaultItem { Note: NoteInfo note }) SelectNoteInActiveDocument(note);
+    }
+    private void BacklinkList_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (BacklinkList.SelectedItem is NoteInfo note
+            && note.Path != GraphSelectedNote?.Path)
+            SelectGraphNote(note);
+    }
+    private void UpdateBacklinks(NoteInfo? selectedNote = null)
+    {
+        var selected = selectedNote ?? _selected;
+        if (selected is null) { BacklinkTitle.Text = "이 노트를 언급한 노트"; BacklinkList.ItemsSource = Array.Empty<NoteInfo>(); return; }
+        var backlinks = _notes.Where(note => _noteLinks.TryGetValue(note.Title, out var targets) && targets.Contains(selected.Title, StringComparer.OrdinalIgnoreCase)).ToList();
         BacklinkTitle.Text = $"이 노트를 언급한 노트 ({backlinks.Count})";
         BacklinkList.ItemsSource = backlinks;
     }

@@ -54,8 +54,8 @@ public sealed partial class MainWindow
 
     private void CaptureCurrentGraphViewport()
     {
-        if (_selected is null || GraphScroll is null) return;
-        _graphViewportStates[_selected.Path] = new GraphViewportState(
+        if (GraphSelectedNote is not { } selected || GraphScroll is null) return;
+        _graphViewportStates[selected.Path] = new GraphViewportState(
             _graphZoom,
             GraphScroll.HorizontalOffset,
             GraphScroll.VerticalOffset);
@@ -78,7 +78,7 @@ public sealed partial class MainWindow
         if (!_graphViewportStates.TryGetValue(note.Path, out var state)) return;
         DispatcherQueue.TryEnqueue(() =>
         {
-            if (_selected?.Path.Equals(note.Path, StringComparison.OrdinalIgnoreCase) == true)
+            if (GraphSelectedNote?.Path.Equals(note.Path, StringComparison.OrdinalIgnoreCase) == true)
                 GraphScroll.ChangeView(state.HorizontalOffset, state.VerticalOffset, null, true);
         });
     }
@@ -152,7 +152,7 @@ public sealed partial class MainWindow
             return;
         }
 
-        var selectedTitle = _selected?.Title;
+        var selectedTitle = GraphSelectedNote?.Title;
         var graphLinks = MergeGraphLinks(_noteLinks, _semanticLinks, notes.Select(note => note.Title));
         _graphRelationshipDepths = GraphLayoutService.RelationshipDepths(selectedTitle, graphLinks, 2);
         var layout = _graphLayoutService.Calculate(
@@ -230,7 +230,7 @@ public sealed partial class MainWindow
 
     private void CenterCurrentGraphNode()
     {
-        if (_selected is null || !_graphPoints.TryGetValue(_selected.Title, out var point)) return;
+        if (GraphSelectedNote is not { } selected || !_graphPoints.TryGetValue(selected.Title, out var point)) return;
 
         var horizontal = Math.Max(0, point.X - GraphScroll.ViewportWidth / 2);
         var vertical = Math.Max(0, point.Y - GraphScroll.ViewportHeight / 2);
@@ -261,7 +261,7 @@ public sealed partial class MainWindow
 
         _graphPanning = false;
         _graphViewportRevision++;
-        if (_selected is not null && _graphPoints.ContainsKey(_selected.Title))
+        if (GraphSelectedNote is { } selected && _graphPoints.ContainsKey(selected.Title))
         {
             CenterCurrentGraphNode();
         }
@@ -439,7 +439,7 @@ public sealed partial class MainWindow
         GraphCanvas.Children.Add(core);
         StartGraphTwinkle(core, $"note:{note.Title}", selected ? .55 : .3);
 
-        var beyondNamedRange = _selected is not null
+        var beyondNamedRange = GraphSelectedNote is not null
             && !_graphRelationshipDepths.ContainsKey(note.Title);
         var hitRadius = Math.Max(beyondNamedRange ? 10 : 8, radius);
         var hitTarget = new Ellipse
@@ -452,7 +452,7 @@ public sealed partial class MainWindow
         Canvas.SetTop(hitTarget, point.Y - hitRadius);
         Canvas.SetZIndex(hitTarget, 5);
         if (CanShowGraphLabel(note.Title)) ToolTipService.SetToolTip(hitTarget, note.Title);
-        hitTarget.Tapped += (_, _) => Select(note);
+        hitTarget.Tapped += (_, _) => SelectGraphNote(note);
         hitTarget.PointerEntered += (_, _) => SetHoveredGraphNode(note.Title);
         hitTarget.PointerExited += (_, _) => ClearHoveredGraphNode(note.Title);
         GraphCanvas.Children.Add(hitTarget);
@@ -534,7 +534,7 @@ public sealed partial class MainWindow
         _graphLabelElements.Clear();
         if (_activeGraphLayout is null || _graphPoints.Count == 0) return;
 
-        var selectedTitle = _selected?.Title;
+        var selectedTitle = GraphSelectedNote?.Title;
         var focusTitle = _hoveredGraphTitle is not null
             && _graphPoints.ContainsKey(_hoveredGraphTitle)
             ? _hoveredGraphTitle
@@ -618,7 +618,7 @@ public sealed partial class MainWindow
     }
 
     private bool CanShowGraphLabel(string title) =>
-        _selected is null
+        GraphSelectedNote is null
         || _graphRelationshipDepths.ContainsKey(title)
         || title.Equals(_hoveredGraphTitle, StringComparison.OrdinalIgnoreCase);
 

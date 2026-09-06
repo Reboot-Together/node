@@ -7,6 +7,62 @@ public sealed partial class MainWindow
 {
     private const int MaximumDocumentGroups = 3;
     private readonly List<SideDocumentPane> _sideDocumentPanes = [];
+    private SideDocumentPane? _activeSideDocumentPane;
+    private NoteInfo? ActiveDocumentNote =>
+        _activeSideDocumentPane is { } pane && _sideDocumentPanes.Contains(pane)
+            ? pane.CurrentNote
+            : _selected;
+
+    private void ActivatePrimaryDocument() => _activeSideDocumentPane = null;
+
+    private void SideDocument_InteractionStarted(object? sender, EventArgs e)
+    {
+        if (sender is SideDocumentPane pane && _sideDocumentPanes.Contains(pane))
+            _activeSideDocumentPane = pane;
+    }
+
+    private void SelectNoteInActiveDocument(NoteInfo note)
+    {
+        note = _notes.FirstOrDefault(candidate =>
+            candidate.Path.Equals(note.Path, StringComparison.OrdinalIgnoreCase)) ?? note;
+
+        if (_activeSideDocumentPane is { } pane && _sideDocumentPanes.Contains(pane))
+        {
+            if (!pane.NotePath.Equals(note.Path, StringComparison.OrdinalIgnoreCase))
+            {
+                if (pane.LoadNote(note)) RevealNoteInTree(note);
+                else RevealNoteInTree(pane.CurrentNote);
+            }
+            return;
+        }
+
+        if (_selected?.Path.Equals(note.Path, StringComparison.OrdinalIgnoreCase) != true) Select(note);
+    }
+
+    private NoteInfo? PrepareActiveDocumentForConstellation()
+    {
+        if (_activeSideDocumentPane is not { } pane || !_sideDocumentPanes.Contains(pane))
+        {
+            SaveCurrent();
+            return _selected;
+        }
+
+        if (!pane.SaveNow()) return null;
+        return _notes.FirstOrDefault(note =>
+            note.Path.Equals(pane.NotePath, StringComparison.OrdinalIgnoreCase)) ?? pane.CurrentNote;
+    }
+
+    private void FocusActiveDocument()
+    {
+        if (_activeSideDocumentPane is { } pane && _sideDocumentPanes.Contains(pane))
+        {
+            pane.FocusEditor();
+            return;
+        }
+
+        if (_selected?.IsReadOnly == true) MarkdownPreview.Focus(FocusState.Programmatic);
+        else Editor.Focus(FocusState.Programmatic);
+    }
 
     private async void OpenCurrentToSide_Click(object sender, RoutedEventArgs e)
     {
@@ -35,6 +91,8 @@ public sealed partial class MainWindow
         }
 
         SaveCurrent();
+        note = _notes.FirstOrDefault(candidate =>
+            candidate.Path.Equals(note.Path, StringComparison.OrdinalIgnoreCase)) ?? note;
         var pane = new SideDocumentPane(
             note,
             _workspace.RootPath,
@@ -45,6 +103,7 @@ public sealed partial class MainWindow
             CurrentSurface.Key);
         pane.CloseRequested += SideDocument_CloseRequested;
         pane.WorkspaceModeToggleRequested += SideDocument_WorkspaceModeToggleRequested;
+        pane.InteractionStarted += SideDocument_InteractionStarted;
         _sideDocumentPanes.Add(pane);
         DocumentGroupsHost.Children.Add(pane);
         RebuildDocumentGroupColumns();
@@ -56,8 +115,10 @@ public sealed partial class MainWindow
         if (sender is not SideDocumentPane pane) return;
         pane.CloseRequested -= SideDocument_CloseRequested;
         pane.WorkspaceModeToggleRequested -= SideDocument_WorkspaceModeToggleRequested;
+        pane.InteractionStarted -= SideDocument_InteractionStarted;
         _sideDocumentPanes.Remove(pane);
         DocumentGroupsHost.Children.Remove(pane);
+        if (ReferenceEquals(_activeSideDocumentPane, pane)) _activeSideDocumentPane = null;
         RebuildDocumentGroupColumns();
     }
 
@@ -65,11 +126,9 @@ public sealed partial class MainWindow
     {
         if (sender is SideDocumentPane pane)
         {
-            pane.SaveNow();
-            if (_selected?.Path.Equals(pane.NotePath, StringComparison.OrdinalIgnoreCase) != true)
-                Select(pane.CurrentNote);
+            _activeSideDocumentPane = pane;
+            if (PrepareActiveDocumentForConstellation() is { } note) ShowConstellationMode(note);
         }
-        ShowConstellationMode();
     }
 
     private void RebuildDocumentGroupColumns()
@@ -118,9 +177,11 @@ public sealed partial class MainWindow
         return saved;
     }
 
-    private void SaveSideDocuments()
+    private bool SaveSideDocuments()
     {
-        foreach (var pane in _sideDocumentPanes.ToArray()) pane.SaveNow();
+        var saved = true;
+        foreach (var pane in _sideDocumentPanes.ToArray()) saved &= pane.SaveNow();
+        return saved;
     }
 
     private void RefreshSideDocumentAppearance()
