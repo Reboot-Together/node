@@ -117,18 +117,28 @@ public sealed class VaultOrderService
     {
         var root = Path.GetFullPath(rootPath).TrimEnd(Path.DirectorySeparatorChar);
         var path = Path.Combine(root, OrderFileName);
-        var temporaryPath = path + ".tmp";
+        var temporaryPath = Path.Combine(root, $"{OrderFileName}.{Guid.NewGuid():N}.tmp");
         var json = JsonSerializer.Serialize(new OrderState(1, _groups), new JsonSerializerOptions { WriteIndented = true });
         try
         {
             File.WriteAllText(temporaryPath, json, new UTF8Encoding(false));
+            if (File.Exists(path))
+            {
+                var attributes = File.GetAttributes(path);
+                var writableAttributes = attributes & ~(FileAttributes.Hidden | FileAttributes.ReadOnly);
+                if (writableAttributes != attributes) File.SetAttributes(path, writableAttributes);
+            }
             File.Move(temporaryPath, path, true);
             try { File.SetAttributes(path, File.GetAttributes(path) | FileAttributes.Hidden); }
             catch { }
         }
         finally
         {
-            if (File.Exists(temporaryPath)) File.Delete(temporaryPath);
+            try
+            {
+                if (File.Exists(temporaryPath)) File.Delete(temporaryPath);
+            }
+            catch { }
         }
     }
 

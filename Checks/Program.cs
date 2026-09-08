@@ -195,6 +195,15 @@ try
     if (!reorderedItems.Select(item => item.Name).SequenceEqual(["10 노트", "2 폴더", "10 폴더", "2 노트"])
         || !File.Exists(Path.Combine(sortRoot, ".asterism-order.json")))
         throw new Exception("탐색기 사용자 지정 정렬 저장 실패");
+    var persistedOrder = treeService.OrderedChildren(sortRoot, sortRoot, sortStore.Load(), treeService.LoadFolders(sortRoot));
+    treeService.Reorder(sortRoot, sortRoot, persistedOrder, tenNote.Path, twoFolder, after: true);
+    var savedTwiceItems = new VaultTreeService().Build(
+        sortRoot,
+        sortStore.Load(),
+        new VaultTreeService().LoadFolders(sortRoot),
+        new HashSet<string>(StringComparer.OrdinalIgnoreCase));
+    if (!savedTwiceItems.Select(item => item.Name).SequenceEqual(["2 폴더", "10 노트", "10 폴더", "2 노트"]))
+        throw new Exception("숨김 정렬 파일 재저장 실패");
     var networkNotes = store.Load();
     var graphLinks = linkService.Build(networkNotes);
     var graphService = new GraphLayoutService();
