@@ -1,6 +1,7 @@
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Input;
+using Microsoft.UI.Xaml.Media;
 using Windows.ApplicationModel.DataTransfer;
 
 namespace AsterismApp;
@@ -9,6 +10,16 @@ public sealed partial class MainWindow
 {
     private string? _contextFolder;
     private VaultItem? _draggedItem;
+    private FrameworkElement? _vaultDropElement;
+    private VaultDropMode _vaultDropMode;
+
+    private enum VaultDropMode
+    {
+        None,
+        Before,
+        Into,
+        After
+    }
 
     private void VaultItem_Tapped(object sender, TappedRoutedEventArgs e)
     {
@@ -102,43 +113,103 @@ public sealed partial class MainWindow
 
     private void VaultItem_DragOver(object sender, DragEventArgs e)
     {
-        if ((sender as FrameworkElement)?.Tag is not string path) return;
+        if (sender is not FrameworkElement element || element.Tag is not string path) return;
         var target = FindVaultItem(path);
-        if (!CanDrop(_draggedItem, target)) return;
+        var mode = ResolveDropMode(_draggedItem, target, element, e.GetPosition(element).Y);
+        if (!CanDrop(_draggedItem, target, mode))
+        {
+            ResetDropIndicator();
+            return;
+        }
 
         e.AcceptedOperation = DataPackageOperation.Move;
-        e.DragUIOverride.Caption = $"{target!.Name}(으)로 이동";
+        e.DragUIOverride.Caption = mode switch
+        {
+            VaultDropMode.Before => $"{target!.Name} 앞에 배치",
+            VaultDropMode.After => $"{target!.Name} 뒤에 배치",
+            _ => $"{target!.Name}(으)로 이동"
+        };
         e.DragUIOverride.IsCaptionVisible = true;
+        ShowDropIndicator(element, mode);
         e.Handled = true;
+    }
+
+    private void VaultItem_DragLeave(object sender, DragEventArgs e)
+    {
+        if (ReferenceEquals(sender, _vaultDropElement)) ResetDropIndicator();
     }
 
     private async void VaultItem_Drop(object sender, DragEventArgs e)
     {
-        if ((sender as FrameworkElement)?.Tag is not string path) return;
+        if (sender is not FrameworkElement element || element.Tag is not string path) return;
         var target = FindVaultItem(path);
         var source = _draggedItem;
+        var mode = ResolveDropMode(source, target, element, e.GetPosition(element).Y);
         _draggedItem = null;
-        if (!CanDrop(source, target)) return;
+        ResetDropIndicator();
+        if (!CanDrop(source, target, mode)) return;
 
         try
         {
             var selectedTitle = _selected?.Title;
-            if (source!.IsFolder)
+            var sourcePath = source!.Path;
+            var destinationPath = sourcePath;
+            if (mode == VaultDropMode.Into)
             {
-                SaveCurrent();
-                var destination = _repository.MoveFolder(source.Path, target!.Path);
-                ReplaceExpandedFolderPath(source.Path, destination);
-                ExpandFolder(target.Path);
+                if (source.IsFolder)
+                {
+                    SaveCurrent();
+                    destinationPath = _repository.MoveFolder(sourcePath, target!.Path);
+                    _vaultTreeService.RemapOrderPath(_workspace.RootPath, sourcePath, destinationPath);
+                    ReplaceExpandedFolderPath(sourcePath, destinationPath);
+                }
+                else if (source.Note is NoteInfo note)
+                {
+                    if (_selected?.Path == note.Path) SaveCurrent();
+                    destinationPath = _repository.Move(note.Path, target!.Path).Path;
+                    _vaultTreeService.RemapOrderPath(_workspace.RootPath, sourcePath, destinationPath);
+                }
+                ExpandFolder(target!.Path);
                 RefreshNotes();
                 SelectByTitle(selectedTitle);
             }
-            else if (source.Note is NoteInfo note)
+            else
             {
-                if (_selected?.Path == note.Path) SaveCurrent();
-                var moved = _repository.Move(note.Path, target!.Path);
-                ExpandFolder(target.Path);
-                RefreshNotes();
-                if (_selected?.Path == note.Path || selectedTitle == note.Title) Select(moved);
+                var targetParent = Path.GetDirectoryName(target!.Path)!;
+                var sourceParent = Path.GetDirectoryName(sourcePath)!;
+                var movedAcrossFolder = !sourceParent.Equals(targetParent, StringComparison.OrdinalIgnoreCase);
+                if (movedAcrossFolder)
+                {
+                    if (source.IsFolder)
+                    {
+                        SaveCurrent();
+                        destinationPath = _repository.MoveFolder(sourcePath, targetParent);
+                        _vaultTreeService.RemapOrderPath(_workspace.RootPath, sourcePath, destinationPath);
+                        ReplaceExpandedFolderPath(sourcePath, destinationPath);
+                    }
+                    else if (source.Note is NoteInfo note)
+                    {
+                        if (_selected?.Path == note.Path) SaveCurrent();
+                        destinationPath = _repository.Move(note.Path, targetParent).Path;
+                        _vaultTreeService.RemapOrderPath(_workspace.RootPath, sourcePath, destinationPath);
+                    }
+                    RefreshNotes();
+                }
+
+                var siblings = _vaultTreeService.OrderedChildren(
+                    _workspace.RootPath,
+                    targetParent,
+                    _notes,
+                    _folders);
+                _vaultTreeService.Reorder(
+                    _workspace.RootPath,
+                    targetParent,
+                    siblings,
+                    destinationPath,
+                    target.Path,
+                    mode == VaultDropMode.After);
+                ApplySearch();
+                if (movedAcrossFolder) SelectByTitle(selectedTitle);
             }
         }
         catch (Exception exception)
@@ -151,16 +222,69 @@ public sealed partial class MainWindow
         }
     }
 
-    private static bool CanDrop(VaultItem? source, VaultItem? target)
+    private static VaultDropMode ResolveDropMode(
+        VaultItem? source,
+        VaultItem? target,
+        FrameworkElement element,
+        double pointerY)
     {
-        if (source is null || source.IsRoot || source.IsVirtual || target is not { IsFolder: true } || target.IsVirtual) return false;
-        var sourceParent = Path.GetDirectoryName(source.Path);
-        if (sourceParent?.Equals(target.Path, StringComparison.OrdinalIgnoreCase) == true) return false;
+        if (source is null || target is null || source.Path.Equals(target.Path, StringComparison.OrdinalIgnoreCase))
+            return VaultDropMode.None;
+        var ratio = element.ActualHeight <= 0 ? .5 : pointerY / element.ActualHeight;
+        if (ratio < .28) return VaultDropMode.Before;
+        if (ratio > .72) return VaultDropMode.After;
+        if (target.IsFolder) return VaultDropMode.Into;
+        return ratio < .5 ? VaultDropMode.Before : VaultDropMode.After;
+    }
+
+    private static bool CanDrop(VaultItem? source, VaultItem? target, VaultDropMode mode)
+    {
+        if (source is null
+            || source.IsRoot
+            || source.IsVirtual
+            || target is null
+            || target.IsVirtual
+            || mode == VaultDropMode.None)
+            return false;
+
+        var destinationFolder = mode == VaultDropMode.Into
+            ? target.IsFolder ? target.Path : null
+            : Path.GetDirectoryName(target.Path);
+        if (destinationFolder is null) return false;
+        if (mode == VaultDropMode.Into
+            && Path.GetDirectoryName(source.Path)?.Equals(destinationFolder, StringComparison.OrdinalIgnoreCase) == true)
+            return false;
         if (!source.IsFolder) return true;
 
         var sourcePrefix = source.Path.TrimEnd(Path.DirectorySeparatorChar) + Path.DirectorySeparatorChar;
-        return !target.Path.Equals(source.Path, StringComparison.OrdinalIgnoreCase)
-            && !target.Path.StartsWith(sourcePrefix, StringComparison.OrdinalIgnoreCase);
+        return !destinationFolder.Equals(source.Path, StringComparison.OrdinalIgnoreCase)
+            && !destinationFolder.StartsWith(sourcePrefix, StringComparison.OrdinalIgnoreCase);
+    }
+
+    private void ShowDropIndicator(FrameworkElement element, VaultDropMode mode)
+    {
+        if (!ReferenceEquals(_vaultDropElement, element)) ResetDropIndicator();
+        _vaultDropElement = element;
+        _vaultDropMode = mode;
+        if (element is not Border border) return;
+        border.BorderBrush = (Brush)Application.Current.Resources["Positive"];
+        border.BorderThickness = mode switch
+        {
+            VaultDropMode.Before => new Thickness(0, 1, 0, 0),
+            VaultDropMode.After => new Thickness(0, 0, 0, 1),
+            _ => new Thickness(1)
+        };
+    }
+
+    private void ResetDropIndicator()
+    {
+        if (_vaultDropElement is Border border)
+        {
+            border.BorderBrush = null;
+            border.BorderThickness = new Thickness(0);
+        }
+        _vaultDropElement = null;
+        _vaultDropMode = VaultDropMode.None;
     }
 
     private VaultItem? FindVaultItem(string path) => _vaultItems.FirstOrDefault(item =>

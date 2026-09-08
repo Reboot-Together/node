@@ -297,14 +297,29 @@ public static class MarkdownPreviewRenderer
 
             if (IsImage(target) && TryImageData(vaultPath, target, out var data))
             {
-                var width = parts.Length > 1 && int.TryParse(parts[1].Split('x')[0], out var pixels) ? $" width=\"{pixels}\"" : "";
-                return $"<img class=\"internal-image\" src=\"{data}\" alt=\"{WebUtility.HtmlEncode(noteName)}\"{width}>";
+                var dimensions = parts.Length > 1 ? ImageDimensionAttributes(parts[1]) : "";
+                return $"<img class=\"internal-image\" src=\"{data}\" alt=\"{WebUtility.HtmlEncode(noteName)}\"{dimensions}>";
             }
             var body = depth < 3 ? resolveNote?.Invoke(noteName) : null;
             return body is null
                 ? $"<span class=\"missing-embed\">![[{WebUtility.HtmlEncode(label)}]]</span>"
                 : $"<section class=\"note-embed\"><header>{WebUtility.HtmlEncode(label)}</header>{RenderBody(body, vaultPath, resolveNote, depth + 1)}</section>";
         });
+    }
+
+    private static string ImageDimensionAttributes(string value)
+    {
+        var match = Regex.Match(value, "^\\s*(\\d{1,5})(?:\\s*[xX×]\\s*(\\d{1,5}))?\\s*$");
+        if (!match.Success
+            || !int.TryParse(match.Groups[1].Value, out var width)
+            || width is < 1 or > 8192)
+            return "";
+
+        if (!match.Groups[2].Success) return $" width=\"{width}\"";
+        if (!int.TryParse(match.Groups[2].Value, out var height)
+            || height is < 1 or > 8192)
+            return "";
+        return $" width=\"{width}\" height=\"{height}\"";
     }
 
     private static bool IsImage(string target) => new[] { ".png", ".jpg", ".jpeg", ".gif", ".webp", ".bmp", ".svg" }.Contains(Path.GetExtension(target.Split('#')[0]), StringComparer.OrdinalIgnoreCase);

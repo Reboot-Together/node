@@ -178,6 +178,23 @@ try
     sortStore.Create("2 노트");
     var sortedItems = treeService.Build(sortRoot, sortStore.Load(), treeService.LoadFolders(sortRoot), new HashSet<string>(StringComparer.OrdinalIgnoreCase));
     if (!sortedItems.Select(item => item.Name).SequenceEqual(["2 폴더", "10 폴더", "2 노트", "10 노트"])) throw new Exception("폴더 우선 이름 자연 정렬 실패");
+    if (!sortedItems.Select(item => item.OrderNumber).SequenceEqual(["1", "2", "3", "4"])
+        || sortedItems[0].DisplayName != "1  2 폴더")
+        throw new Exception("탐색기 계층 순서 번호 표시 실패");
+    var sortFolders = treeService.LoadFolders(sortRoot);
+    var sortNotes = sortStore.Load();
+    var defaultOrder = treeService.OrderedChildren(sortRoot, sortRoot, sortNotes, sortFolders);
+    var tenNote = sortNotes.Single(note => note.Title == "10 노트");
+    var twoFolder = sortFolders.Single(path => Path.GetFileName(path) == "2 폴더");
+    treeService.Reorder(sortRoot, sortRoot, defaultOrder, tenNote.Path, twoFolder, after: false);
+    var reorderedItems = new VaultTreeService().Build(
+        sortRoot,
+        sortStore.Load(),
+        new VaultTreeService().LoadFolders(sortRoot),
+        new HashSet<string>(StringComparer.OrdinalIgnoreCase));
+    if (!reorderedItems.Select(item => item.Name).SequenceEqual(["10 노트", "2 폴더", "10 폴더", "2 노트"])
+        || !File.Exists(Path.Combine(sortRoot, ".asterism-order.json")))
+        throw new Exception("탐색기 사용자 지정 정렬 저장 실패");
     var networkNotes = store.Load();
     var graphLinks = linkService.Build(networkNotes);
     var graphService = new GraphLayoutService();
@@ -454,6 +471,13 @@ Recall = TP / (TP + FN)
     File.WriteAllBytes(Path.Combine(attachmentDirectory, "붙여넣기.png"), [0x89, 0x50, 0x4e, 0x47]);
     var imageRender = MarkdownPreviewRenderer.Render("![[attachments/붙여넣기.png]]", root);
     if (!imageRender.Contains("class=\"internal-image\"") || !imageRender.Contains("src=\"data:image/png;base64,")) throw new Exception("붙여넣은 이미지 렌더링 실패");
+    var sizedImageRender = MarkdownPreviewRenderer.Render("![[attachments/붙여넣기.png|480]]\n\n![[attachments/붙여넣기.png|640x360]]", root);
+    if (!sizedImageRender.Contains("width=\"480\"")
+        || !sizedImageRender.Contains("width=\"640\" height=\"360\""))
+        throw new Exception("이미지 크기 문법 렌더링 실패");
+    var invalidImageSizeRender = MarkdownPreviewRenderer.Render("![[attachments/붙여넣기.png|640x0]]", root);
+    if (invalidImageSizeRender.Contains("width=\"640\"") || invalidImageSizeRender.Contains("height=\"0\""))
+        throw new Exception("잘못된 이미지 크기 문법 제한 실패");
 
     var crNote = store.Create("# 제목 정규화");
     crNote = store.Save(crNote.Path, crNote.Title, windowsTextBoxMarkdown, NoteMetadata.Manual);

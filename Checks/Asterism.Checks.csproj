@@ -18,6 +18,7 @@
     <Compile Include="..\GraphFieldStarService.cs" Link="GraphFieldStarService.cs" />
     <Compile Include="..\GraphLabelLayoutService.cs" Link="GraphLabelLayoutService.cs" />
     <Compile Include="..\VaultTreeService.cs" Link="VaultTreeService.cs" />
+    <Compile Include="..\VaultOrderService.cs" Link="VaultOrderService.cs" />
     <Compile Include="..\UpdateService.cs" Link="UpdateService.cs" />
     <Compile Include="..\MarkdownPreviewRenderer.cs" Link="MarkdownPreviewRenderer.cs" />
     <Compile Include="..\PreviewEditSession.cs" Link="PreviewEditSession.cs" />

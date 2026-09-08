@@ -19,8 +19,10 @@ public sealed record VaultItem(
     bool IsRoot,
     bool IsExpanded,
     int Depth,
-    NoteInfo? Note)
+    NoteInfo? Note,
+    string OrderNumber = "")
 {
+    public string DisplayName => OrderNumber.Length == 0 ? Name : $"{OrderNumber}  {Name}";
     public double Indent => Depth * 14;
     public double CollapsedChevronOpacity => IsFolder && !IsRoot && !IsExpanded ? 1 : 0;
     public double ExpandedChevronOpacity => IsFolder && !IsRoot && IsExpanded ? 1 : 0;

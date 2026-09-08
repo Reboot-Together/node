@@ -45,6 +45,7 @@ public sealed partial class MainWindow
             SaveCurrent();
             var selectedTitle = _selected?.Title;
             var renamed = _repository.RenameFolder(folder, name);
+            _vaultTreeService.RemapOrderPath(_workspace.RootPath, folder, renamed);
             ReplaceExpandedFolderPath(folder, renamed);
             _contextFolder = renamed;
             RefreshNotes();
@@ -76,6 +77,7 @@ public sealed partial class MainWindow
             _saveTimer.Stop();
             SaveCurrent();
             _repository.MoveFolderToTrash(folder);
+            _vaultTreeService.RemoveOrderPath(_workspace.RootPath, folder);
             RemoveExpandedFolderBranch(folder);
             _contextFolder = null;
             _selected = null;
@@ -104,6 +106,7 @@ public sealed partial class MainWindow
         try
         {
             var renamed = _repository.Rename(note.Path, title);
+            _vaultTreeService.RemapOrderPath(_workspace.RootPath, note.Path, renamed.Path);
             _selected = null;
             _contextNote = renamed;
             RefreshNotes();
@@ -136,6 +139,7 @@ public sealed partial class MainWindow
             _loading = true;
             _selected = null;
             _repository.MoveToTrash(note.Path);
+            _vaultTreeService.RemoveOrderPath(_workspace.RootPath, note.Path);
             _loading = false;
             RefreshNotes();
             if (_notes.Count == 0) NewNote();
@@ -178,6 +182,7 @@ public sealed partial class MainWindow
         try
         {
             var moved = _repository.Move(note.Path, folder.Path);
+            _vaultTreeService.RemapOrderPath(_workspace.RootPath, note.Path, moved.Path);
             _selected = null;
             RefreshNotes();
             Select(moved);
