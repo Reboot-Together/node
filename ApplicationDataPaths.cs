@@ -14,6 +14,8 @@ public static class ApplicationDataPaths
 
     public static string UiLayoutSettingsFile => Path.Combine(CurrentDirectory, "ui-layout.json");
 
+    public static string VaultOrderDirectory => Path.Combine(CurrentDirectory, "vault-order");
+
     public static IEnumerable<string> SettingsCandidates()
     {
         yield return SettingsFile;

@@ -39,7 +39,9 @@ public sealed partial class MainWindow : Window
     private NoteInfo? _selected;
     private bool _loading;
     private bool _previewReady;
+    private bool _previewInitializing;
     private bool _titlePreviewReady;
+    private bool _titlePreviewInitializing;
     private WebViewHtmlUpdater? _previewHtmlUpdater;
     private WebViewHtmlUpdater? _titleHtmlUpdater;
     private PreviewEditSession? _previewEditSession;
@@ -350,7 +352,8 @@ public sealed partial class MainWindow : Window
 
     private async void TitlePreview_Loaded(object sender, RoutedEventArgs e)
     {
-        if (_titlePreviewReady) return;
+        if (_titlePreviewReady || _titlePreviewInitializing) return;
+        _titlePreviewInitializing = true;
         try
         {
             await TitlePreview.EnsureCoreWebView2Async();
@@ -366,6 +369,10 @@ public sealed partial class MainWindow : Window
         {
             TitlePreview.Visibility = Visibility.Collapsed;
             TitleBox.Opacity = 1;
+        }
+        finally
+        {
+            _titlePreviewInitializing = false;
         }
     }
 
@@ -562,10 +569,15 @@ public sealed partial class MainWindow : Window
 
     private async void MarkdownPreview_Loaded(object sender, RoutedEventArgs e)
     {
-        if (_previewReady) return;
+        if (_previewReady || _previewInitializing) return;
+        _previewInitializing = true;
         try
         {
             await MarkdownPreview.EnsureCoreWebView2Async();
+            MarkdownPreview.CoreWebView2.SetVirtualHostNameToFolderMapping(
+                MarkdownPreviewRenderer.VaultAssetHostName,
+                _workspace.RootPath,
+                CoreWebView2HostResourceAccessKind.Allow);
             var mathAssetsPath = Path.Combine(AppContext.BaseDirectory, "Assets", "KaTeX");
             if (Directory.Exists(mathAssetsPath))
             {
@@ -582,6 +594,10 @@ public sealed partial class MainWindow : Window
         catch (Exception exception)
         {
             await ShowMessage("미리보기를 열 수 없음", $"WebView2 마크다운 미리보기를 초기화하지 못했습니다.\n\n{exception.Message}");
+        }
+        finally
+        {
+            _previewInitializing = false;
         }
     }
 

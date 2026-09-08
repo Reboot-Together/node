@@ -5,7 +5,12 @@ namespace AsterismApp;
 public sealed class VaultTreeService
 {
     private static readonly IComparer<string> NameComparer = Comparer<string>.Create(CompareNames);
-    private readonly VaultOrderService _orderService = new();
+    private readonly VaultOrderService _orderService;
+
+    public VaultTreeService(string? orderStorageDirectory = null)
+    {
+        _orderService = new VaultOrderService(orderStorageDirectory);
+    }
 
     public void Reorder(
         string rootPath,

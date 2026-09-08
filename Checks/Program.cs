@@ -148,7 +148,8 @@ try
     try { store.MoveFolder(movedFolder, Path.Combine(movedFolder, "새 폴더")); }
     catch (InvalidOperationException) { blockedDescendantMove = true; }
     if (!blockedDescendantMove) throw new Exception("폴더를 자기 하위로 이동하는 작업 차단 실패");
-    var treeService = new VaultTreeService();
+    var orderStorageDirectory = Path.Combine(root, ".check-order-state");
+    var treeService = new VaultTreeService(orderStorageDirectory);
     var cachedFolders = treeService.LoadFolders(root);
     var treeItems = treeService.Build(root, store.Load(), cachedFolders, new HashSet<string>([dropTarget], StringComparer.OrdinalIgnoreCase));
     if (!treeItems.Any(item => item.IsFolder && item.Path == dropTarget) || !treeItems.Any(item => item.Note?.Path == draggedNote.Path)) throw new Exception("저장소 폴더 트리 구성 실패");
@@ -187,20 +188,20 @@ try
     var tenNote = sortNotes.Single(note => note.Title == "10 노트");
     var twoFolder = sortFolders.Single(path => Path.GetFileName(path) == "2 폴더");
     treeService.Reorder(sortRoot, sortRoot, defaultOrder, tenNote.Path, twoFolder, after: false);
-    var reorderedItems = new VaultTreeService().Build(
+    var reorderedItems = new VaultTreeService(orderStorageDirectory).Build(
         sortRoot,
         sortStore.Load(),
-        new VaultTreeService().LoadFolders(sortRoot),
+        new VaultTreeService(orderStorageDirectory).LoadFolders(sortRoot),
         new HashSet<string>(StringComparer.OrdinalIgnoreCase));
     if (!reorderedItems.Select(item => item.Name).SequenceEqual(["10 노트", "2 폴더", "10 폴더", "2 노트"])
-        || !File.Exists(Path.Combine(sortRoot, ".asterism-order.json")))
+        || !Directory.EnumerateFiles(orderStorageDirectory, "*.json").Any())
         throw new Exception("탐색기 사용자 지정 정렬 저장 실패");
     var persistedOrder = treeService.OrderedChildren(sortRoot, sortRoot, sortStore.Load(), treeService.LoadFolders(sortRoot));
     treeService.Reorder(sortRoot, sortRoot, persistedOrder, tenNote.Path, twoFolder, after: true);
-    var savedTwiceItems = new VaultTreeService().Build(
+    var savedTwiceItems = new VaultTreeService(orderStorageDirectory).Build(
         sortRoot,
         sortStore.Load(),
-        new VaultTreeService().LoadFolders(sortRoot),
+        new VaultTreeService(orderStorageDirectory).LoadFolders(sortRoot),
         new HashSet<string>(StringComparer.OrdinalIgnoreCase));
     if (!savedTwiceItems.Select(item => item.Name).SequenceEqual(["2 폴더", "10 노트", "10 폴더", "2 노트"]))
         throw new Exception("숨김 정렬 파일 재저장 실패");
@@ -479,7 +480,11 @@ Recall = TP / (TP + FN)
     Directory.CreateDirectory(attachmentDirectory);
     File.WriteAllBytes(Path.Combine(attachmentDirectory, "붙여넣기.png"), [0x89, 0x50, 0x4e, 0x47]);
     var imageRender = MarkdownPreviewRenderer.Render("![[attachments/붙여넣기.png]]", root);
-    if (!imageRender.Contains("class=\"internal-image\"") || !imageRender.Contains("src=\"data:image/png;base64,")) throw new Exception("붙여넣은 이미지 렌더링 실패");
+    if (!imageRender.Contains("class=\"internal-image\"")
+        || !imageRender.Contains($"src=\"https://{MarkdownPreviewRenderer.VaultAssetHostName}/attachments/"))
+        throw new Exception("붙여넣은 이미지 렌더링 실패");
+    if (imageRender.Contains(";base64,", StringComparison.OrdinalIgnoreCase))
+        throw new Exception("이미지가 HTML에 포함되어 WebView2 문서 크기를 키움");
     var sizedImageRender = MarkdownPreviewRenderer.Render("![[attachments/붙여넣기.png|480]]\n\n![[attachments/붙여넣기.png|640x360]]", root);
     if (!sizedImageRender.Contains("width=\"480\"")
         || !sizedImageRender.Contains("width=\"640\" height=\"360\""))

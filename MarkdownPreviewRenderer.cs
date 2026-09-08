@@ -12,6 +12,7 @@ namespace AsterismApp;
 
 public static class MarkdownPreviewRenderer
 {
+    public const string VaultAssetHostName = "asterism-vault.local";
     private static readonly MarkdownPipeline Pipeline = CreatePipeline();
 
     private static MarkdownPipeline CreatePipeline()
@@ -295,10 +296,10 @@ public static class MarkdownPreviewRenderer
             var label = parts.Length > 1 ? parts[1].Trim() : target;
             if (!embed) return $"<a class=\"internal-link\" href=\"node-note://note/{Uri.EscapeDataString(noteName)}\">{WebUtility.HtmlEncode(label)}</a>";
 
-            if (IsImage(target) && TryImageData(vaultPath, target, out var data))
+            if (IsImage(target) && TryImageSource(vaultPath, target, out var source))
             {
                 var dimensions = parts.Length > 1 ? ImageDimensionAttributes(parts[1]) : "";
-                return $"<img class=\"internal-image\" src=\"{data}\" alt=\"{WebUtility.HtmlEncode(noteName)}\"{dimensions}>";
+                return $"<img class=\"internal-image\" src=\"{WebUtility.HtmlEncode(source)}\" alt=\"{WebUtility.HtmlEncode(noteName)}\"{dimensions}>";
             }
             var body = depth < 3 ? resolveNote?.Invoke(noteName) : null;
             return body is null
@@ -324,18 +325,22 @@ public static class MarkdownPreviewRenderer
 
     private static bool IsImage(string target) => new[] { ".png", ".jpg", ".jpeg", ".gif", ".webp", ".bmp", ".svg" }.Contains(Path.GetExtension(target.Split('#')[0]), StringComparer.OrdinalIgnoreCase);
 
-    private static bool TryImageData(string vaultPath, string target, out string data)
+    private static bool TryImageSource(string vaultPath, string target, out string source)
     {
-        data = "";
+        source = "";
         try
         {
             var name = target.Split('#')[0];
-            var direct = Path.GetFullPath(Path.Combine(vaultPath, name.Replace('/', Path.DirectorySeparatorChar)));
-            var root = Path.GetFullPath(vaultPath) + Path.DirectorySeparatorChar;
-            var path = direct.StartsWith(root, StringComparison.OrdinalIgnoreCase) && File.Exists(direct) ? direct : Directory.EnumerateFiles(vaultPath, Path.GetFileName(name), SearchOption.AllDirectories).FirstOrDefault();
-            if (path is null || new FileInfo(path).Length > 10 * 1024 * 1024) return false;
-            var mime = Path.GetExtension(path).ToLowerInvariant() switch { ".png" => "image/png", ".jpg" or ".jpeg" => "image/jpeg", ".gif" => "image/gif", ".webp" => "image/webp", ".svg" => "image/svg+xml", _ => "image/bmp" };
-            data = $"data:{mime};base64,{Convert.ToBase64String(File.ReadAllBytes(path))}";
+            var root = Path.GetFullPath(vaultPath).TrimEnd(Path.DirectorySeparatorChar);
+            var rootPrefix = root + Path.DirectorySeparatorChar;
+            var direct = Path.GetFullPath(Path.Combine(root, name.Replace('/', Path.DirectorySeparatorChar)));
+            var path = direct.StartsWith(rootPrefix, StringComparison.OrdinalIgnoreCase) && File.Exists(direct)
+                ? direct
+                : Directory.EnumerateFiles(root, Path.GetFileName(name), SearchOption.AllDirectories).FirstOrDefault();
+            if (path is null) return false;
+            var relativePath = Path.GetRelativePath(root, path).Replace('\\', '/');
+            var encodedPath = string.Join('/', relativePath.Split('/').Select(Uri.EscapeDataString));
+            source = $"https://{VaultAssetHostName}/{encodedPath}";
             return true;
         }
         catch { return false; }

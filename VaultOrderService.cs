@@ -1,13 +1,20 @@
 using System.Text;
 using System.Text.Json;
+using System.Security.Cryptography;
 
 namespace AsterismApp;
 
 public sealed class VaultOrderService
 {
     private const string OrderFileName = ".asterism-order.json";
+    private readonly string _storageDirectory;
     private string? _loadedRoot;
     private Dictionary<string, List<string>> _groups = new(StringComparer.OrdinalIgnoreCase);
+
+    public VaultOrderService(string? storageDirectory = null)
+    {
+        _storageDirectory = storageDirectory ?? ApplicationDataPaths.VaultOrderDirectory;
+    }
 
     public IReadOnlyList<string> Order(string rootPath, string parentPath, IEnumerable<string> defaultPaths)
     {
@@ -98,7 +105,9 @@ public sealed class VaultOrderService
         _groups = new Dictionary<string, List<string>>(StringComparer.OrdinalIgnoreCase);
         try
         {
-            var path = Path.Combine(root, OrderFileName);
+            var localPath = OrderPath(root);
+            var legacyPath = Path.Combine(root, OrderFileName);
+            var path = File.Exists(localPath) ? localPath : legacyPath;
             if (!File.Exists(path)) return;
             var state = JsonSerializer.Deserialize<OrderState>(File.ReadAllText(path));
             if (state?.Groups is null) return;
@@ -106,6 +115,11 @@ public sealed class VaultOrderService
                 pair => NormalizeId(pair.Key),
                 pair => pair.Value.Select(NormalizeId).Distinct(StringComparer.OrdinalIgnoreCase).ToList(),
                 StringComparer.OrdinalIgnoreCase);
+            if (path.Equals(legacyPath, StringComparison.OrdinalIgnoreCase))
+            {
+                try { Save(root); }
+                catch { }
+            }
         }
         catch
         {
@@ -116,21 +130,14 @@ public sealed class VaultOrderService
     private void Save(string rootPath)
     {
         var root = Path.GetFullPath(rootPath).TrimEnd(Path.DirectorySeparatorChar);
-        var path = Path.Combine(root, OrderFileName);
-        var temporaryPath = Path.Combine(root, $"{OrderFileName}.{Guid.NewGuid():N}.tmp");
+        Directory.CreateDirectory(_storageDirectory);
+        var path = OrderPath(root);
+        var temporaryPath = path + $".{Guid.NewGuid():N}.tmp";
         var json = JsonSerializer.Serialize(new OrderState(1, _groups), new JsonSerializerOptions { WriteIndented = true });
         try
         {
             File.WriteAllText(temporaryPath, json, new UTF8Encoding(false));
-            if (File.Exists(path))
-            {
-                var attributes = File.GetAttributes(path);
-                var writableAttributes = attributes & ~(FileAttributes.Hidden | FileAttributes.ReadOnly);
-                if (writableAttributes != attributes) File.SetAttributes(path, writableAttributes);
-            }
             File.Move(temporaryPath, path, true);
-            try { File.SetAttributes(path, File.GetAttributes(path) | FileAttributes.Hidden); }
-            catch { }
         }
         finally
         {
@@ -140,6 +147,15 @@ public sealed class VaultOrderService
             }
             catch { }
         }
+    }
+
+    private string OrderPath(string rootPath)
+    {
+        var normalizedRoot = Path.GetFullPath(rootPath)
+            .TrimEnd(Path.DirectorySeparatorChar)
+            .ToUpperInvariant();
+        var hash = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(normalizedRoot))).ToLowerInvariant();
+        return Path.Combine(_storageDirectory, hash + ".json");
     }
 
     private static Dictionary<string, List<string>> NormalizeGroups(Dictionary<string, List<string>> groups)
