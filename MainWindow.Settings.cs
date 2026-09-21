@@ -49,6 +49,7 @@ public sealed partial class MainWindow
             accent.Color = palette.Surface;
         ApplyEditorPalette(Editor, surface, palette.Surface);
         MarkdownPreview.DefaultBackgroundColor = surface.DocumentBackground;
+        PdfReader.DefaultBackgroundColor = surface.DocumentBackground;
         TitlePreview.DefaultBackgroundColor = surface.DocumentBackground;
         ApplyTitleBarAppearance(surface);
 

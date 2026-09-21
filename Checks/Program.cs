@@ -492,6 +492,11 @@ Recall = TP / (TP + FN)
     var invalidImageSizeRender = MarkdownPreviewRenderer.Render("![[attachments/붙여넣기.png|640x0]]", root);
     if (invalidImageSizeRender.Contains("width=\"640\"") || invalidImageSizeRender.Contains("height=\"0\""))
         throw new Exception("잘못된 이미지 크기 문법 제한 실패");
+    if (!PdfReaderRules.IsPdf("자료.PDF") || PdfReaderRules.IsPdf("자료.md"))
+        throw new Exception("PDF 파일 판별 실패");
+    var pdfUri = PdfReaderRules.FileUri(Path.Combine(root, "한글 자료 & 100%.pdf"));
+    if (!pdfUri.IsFile || !Uri.UnescapeDataString(pdfUri.LocalPath).EndsWith("한글 자료 & 100%.pdf", StringComparison.Ordinal))
+        throw new Exception("PDF 로컬 파일 URI 변환 실패");
 
     var crNote = store.Create("# 제목 정규화");
     crNote = store.Save(crNote.Path, crNote.Title, windowsTextBoxMarkdown, NoteMetadata.Manual);

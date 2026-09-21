@@ -30,6 +30,12 @@ public sealed partial class MainWindow
         KeyboardAccelerator sender,
         KeyboardAcceleratorInvokedEventArgs args)
     {
+        if (_pdfMode)
+        {
+            args.Handled = true;
+            ShowDocumentMode();
+            return;
+        }
         if (!_constellationMode) return;
         args.Handled = true;
         ShowDocumentMode();
@@ -37,6 +43,15 @@ public sealed partial class MainWindow
 
     private void ShowDocumentMode()
     {
+        if (_pdfMode)
+        {
+            HidePdfMode();
+            DocumentGroupsHost.Visibility = Visibility.Visible;
+            DocumentModeIndicator.Visibility = Visibility.Visible;
+            ConstellationModeIndicator.Visibility = Visibility.Collapsed;
+            DispatcherQueue.TryEnqueue(FocusActiveDocument);
+            return;
+        }
         if (!_constellationMode) return;
 
         CaptureCurrentGraphViewport();
@@ -75,6 +90,8 @@ public sealed partial class MainWindow
     private void ShowConstellationMode(NoteInfo selected)
     {
         if (_constellationMode) return;
+
+        HidePdfMode();
 
         _constellationTargetPane = _activeSideDocumentPane is { } pane && _sideDocumentPanes.Contains(pane)
             ? pane

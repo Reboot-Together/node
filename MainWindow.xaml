@@ -97,6 +97,10 @@
             <Button x:Name="ConstellationModeButton" Content="성좌 지도" Style="{StaticResource QuietButton}" Padding="12,5" MinWidth="0" Click="ConstellationMode_Click" ToolTipService.ToolTip="현재 노트의 성좌 지도 열기 (Ctrl+G)" />
             <Border x:Name="ConstellationModeIndicator" Height="2" Background="{StaticResource Positive}" VerticalAlignment="Bottom" Margin="8,0" Visibility="Collapsed" IsHitTestVisible="False" />
           </Grid>
+          <Grid>
+            <Button x:Name="PdfModeButton" Content="PDF" Style="{StaticResource QuietButton}" Padding="12,5" MinWidth="0" Click="PdfMode_Click" ToolTipService.ToolTip="PDF 리더 열기" />
+            <Border x:Name="PdfModeIndicator" Height="2" Background="{StaticResource Positive}" VerticalAlignment="Bottom" Margin="8,0" Visibility="Collapsed" IsHitTestVisible="False" />
+          </Grid>
         </StackPanel>
       </Border>
 
@@ -219,6 +223,23 @@
               </ScrollViewer>
             </Expander>
           </Grid>
+        </Grid>
+      </Border>
+
+      <Border x:Name="PdfPanel" Grid.Column="1" Margin="0,38,0,0" Visibility="Collapsed" Background="{StaticResource DocumentBackground}" Canvas.ZIndex="10">
+        <Grid RowDefinitions="Auto,*">
+          <Grid ColumnDefinitions="*,Auto,Auto,Auto" Margin="18,12,18,10" ColumnSpacing="7">
+            <StackPanel VerticalAlignment="Center" Spacing="1">
+              <TextBlock x:Name="PdfTitleText" Text="PDF" FontWeight="SemiBold" FontSize="{Binding Ui, Source={StaticResource Typography}}" Foreground="{StaticResource PrimaryText}" TextTrimming="CharacterEllipsis" />
+              <TextBlock x:Name="PdfStatusText" Text="PDF 파일을 선택해 주세요." FontSize="{Binding Small, Source={StaticResource Typography}}" Foreground="{StaticResource MutedText}" TextTrimming="CharacterEllipsis" />
+            </StackPanel>
+            <Button Grid.Column="1" Content="다른 PDF" Style="{StaticResource QuietButton}" Padding="9,5" MinWidth="0" Click="ChangePdf_Click" />
+            <Button Grid.Column="2" Content="파일 위치" Style="{StaticResource QuietButton}" Padding="9,5" MinWidth="0" Click="OpenPdfLocation_Click" />
+            <Button Grid.Column="3" Content="닫기" Style="{StaticResource QuietButton}" Padding="9,5" MinWidth="0" Click="ClosePdf_Click" />
+          </Grid>
+          <Border Grid.Row="1" BorderBrush="{StaticResource CardBorder}" BorderThickness="1,1,0,0">
+            <WebView2 x:Name="PdfReader" DefaultBackgroundColor="#1E1E1E" NavigationCompleted="PdfReader_NavigationCompleted" />
+          </Border>
         </Grid>
       </Border>
     </Grid>
