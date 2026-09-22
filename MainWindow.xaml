@@ -96,6 +96,7 @@
 
       <Border Grid.Column="1" Background="{StaticResource DocumentBackground}" BorderBrush="{StaticResource CardBorder}" BorderThickness="0,0,0,1" Height="38" VerticalAlignment="Top" Canvas.ZIndex="20">
         <StackPanel Orientation="Horizontal" Spacing="2" Margin="16,3" VerticalAlignment="Stretch">
+          <Button x:Name="ExplorerOpenButton" Content="›" Style="{StaticResource QuietButton}" Padding="8,5" MinWidth="0" Visibility="Collapsed" Click="ExplorerOpen_Click" ToolTipService.ToolTip="자료 탐색기 펼치기" AutomationProperties.Name="자료 탐색기 펼치기" />
           <Grid>
             <Button x:Name="DocumentModeButton" Content="문서" Style="{StaticResource QuietButton}" Padding="12,5" MinWidth="0" Click="DocumentMode_Click" ToolTipService.ToolTip="문서 보기" />
             <Border x:Name="DocumentModeIndicator" Height="2" Background="{StaticResource Positive}" VerticalAlignment="Bottom" Margin="8,0" IsHitTestVisible="False" />
@@ -174,8 +175,6 @@
         </Grid>
       </Border>
       </Grid>
-
-      <Button x:Name="ExplorerOpenButton" Grid.Column="1" Content="›" Style="{StaticResource QuietButton}" Padding="8,5" MinWidth="0" HorizontalAlignment="Left" VerticalAlignment="Top" Margin="7,4,0,0" Visibility="Collapsed" Click="ExplorerOpen_Click" ToolTipService.ToolTip="노트 탐색기 펼치기" Canvas.ZIndex="30" />
 
       <Border x:Name="ConstellationPanel" Grid.Column="1" Margin="0,38,0,0" Visibility="Collapsed" Background="#151515" Canvas.ZIndex="10">
         <Grid RowDefinitions="Auto,*">

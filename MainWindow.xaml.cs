@@ -574,7 +574,7 @@ public sealed partial class MainWindow : Window
         ExplorerPanel.Visibility = collapsed ? Visibility.Collapsed : Visibility.Visible;
         ExplorerColumn.Width = collapsed ? new GridLength(0) : new GridLength(232);
         ExplorerOpenButton.Visibility = collapsed ? Visibility.Visible : Visibility.Collapsed;
-        DocumentPanel.Padding = collapsed ? new Thickness(42, 18, 28, 12) : new Thickness(28, 18, 28, 12);
+        DocumentPanel.Padding = new Thickness(28, 18, 28, 12);
     }
 
     private async void MarkdownPreview_Loaded(object sender, RoutedEventArgs e)
