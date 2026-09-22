@@ -7,6 +7,7 @@
     <Compile Include="..\MarkdownText.cs" Link="MarkdownText.cs" />
     <Compile Include="..\MarkdownHeadingLevelService.cs" Link="MarkdownHeadingLevelService.cs" />
     <Compile Include="..\PdfReaderRules.cs" Link="PdfReaderRules.cs" />
+    <Compile Include="..\PdfDocumentService.cs" Link="PdfDocumentService.cs" />
     <Compile Include="..\SemanticTextChunker.cs" Link="SemanticTextChunker.cs" />
     <Compile Include="..\LocalEmbeddingModel.cs" Link="LocalEmbeddingModel.cs" />
     <Compile Include="..\SemanticIndexStore.cs" Link="SemanticIndexStore.cs" />

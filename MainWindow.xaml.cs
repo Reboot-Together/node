@@ -20,6 +20,7 @@ public sealed partial class MainWindow : Window
     private readonly WorkspaceService _workspace = new();
     private readonly UiLayoutSettingsService _uiLayoutSettingsService = new();
     private readonly NoteRepository _repository;
+    private readonly PdfDocumentService _pdfRepository;
     private readonly NoteLinkService _linkService = new();
     private readonly NoteImageService _imageService = new();
     private readonly VaultTreeService _vaultTreeService = new();
@@ -28,6 +29,7 @@ public sealed partial class MainWindow : Window
     private readonly DispatcherQueueTimer _saveTimer;
     private readonly DispatcherQueueTimer _previewTimer;
     private List<NoteInfo> _notes = [];
+    private List<PdfInfo> _pdfDocuments = [];
     private IReadOnlyList<string> _folders = [];
     private IReadOnlyList<string> ExplorerFolders => [.. _folders, BuiltInGuideService.FolderPath];
     private IReadOnlyList<VaultItem> _vaultItems = [];
@@ -56,6 +58,7 @@ public sealed partial class MainWindow : Window
     public MainWindow()
     {
         _repository = new NoteRepository(_workspace.RootPath);
+        _pdfRepository = new PdfDocumentService(_workspace.RootPath);
         InitializeComponent();
         GraphCanvas.AddHandler(
             UIElement.PointerWheelChangedEvent,
@@ -105,6 +108,7 @@ public sealed partial class MainWindow : Window
     private void RefreshNotes()
     {
         _notes = _repository.Load();
+        _pdfDocuments = _pdfRepository.Load();
         _folders = _vaultTreeService.LoadFolders(_workspace.RootPath);
         if (!_folderExpansionInitialized)
         {
@@ -133,25 +137,26 @@ public sealed partial class MainWindow : Window
     {
         var query = SearchBox?.Text.Trim() ?? "";
         var activeNote = ActiveDocumentNote;
-        var preferredFolders = activeNote is null
+        var activePath = _pdfMode ? _currentPdfPath : activeNote?.Path;
+        var preferredFolders = activePath is null
             ? []
-            : activeNote.IsReadOnly
+            : activeNote?.IsReadOnly == true
                 ? [BuiltInGuideService.FolderPath]
-                : _vaultTreeService.AncestorFolders(_workspace.RootPath, activeNote.Path);
+                : _vaultTreeService.AncestorFolders(_workspace.RootPath, activePath);
         _folderExpansionService.EnforceExclusive(
             _workspace.RootPath,
             ExplorerFolders,
             _expandedFolders,
             preferredFolders);
-        var items = _vaultTreeService.Build(_workspace.RootPath, _notes, _folders, _expandedFolders, query).ToList();
+        var items = _vaultTreeService.Build(_workspace.RootPath, _notes, _folders, _expandedFolders, query, _pdfDocuments).ToList();
         items.InsertRange(0, _guideService.BuildItems(_expandedFolders, query));
         _suppressNoteListSelectionChanged = true;
         try
         {
             _vaultItems = items;
             NoteList.ItemsSource = _vaultItems;
-            if (activeNote is not null)
-                NoteList.SelectedItem = _vaultItems.FirstOrDefault(item => item.Note?.Path == activeNote.Path);
+            if (activePath is not null)
+                NoteList.SelectedItem = _vaultItems.FirstOrDefault(item => item.Path.Equals(activePath, StringComparison.OrdinalIgnoreCase));
         }
         finally
         {
@@ -221,13 +226,18 @@ public sealed partial class MainWindow : Window
 
     private void RevealNoteInTree(NoteInfo note)
     {
+        RevealVaultItemInTree(note.Path, note.IsReadOnly);
+    }
+
+    private void RevealVaultItemInTree(string path, bool isReadOnly = false)
+    {
         var treeChanged = false;
         if (!string.IsNullOrWhiteSpace(SearchBox.Text))
         {
             SearchBox.Text = "";
             treeChanged = true;
         }
-        if (note.IsReadOnly)
+        if (isReadOnly)
         {
             var before = _expandedFolders.ToHashSet(StringComparer.OrdinalIgnoreCase);
             _folderExpansionService.ExpandExclusive(
@@ -238,7 +248,7 @@ public sealed partial class MainWindow : Window
             treeChanged |= !before.SetEquals(_expandedFolders);
         }
         else
-            foreach (var folder in _vaultTreeService.AncestorFolders(_workspace.RootPath, note.Path).Reverse())
+            foreach (var folder in _vaultTreeService.AncestorFolders(_workspace.RootPath, path).Reverse())
             {
                 var before = _expandedFolders.ToHashSet(StringComparer.OrdinalIgnoreCase);
                 _folderExpansionService.ExpandExclusive(_workspace.RootPath, ExplorerFolders, _expandedFolders, folder);
@@ -247,11 +257,11 @@ public sealed partial class MainWindow : Window
 
         var item = treeChanged
             ? null
-            : _vaultItems.FirstOrDefault(candidate => candidate.Note?.Path == note.Path);
+            : _vaultItems.FirstOrDefault(candidate => candidate.Path.Equals(path, StringComparison.OrdinalIgnoreCase));
         if (item is null)
         {
             ApplySearch();
-            item = _vaultItems.FirstOrDefault(candidate => candidate.Note?.Path == note.Path);
+            item = _vaultItems.FirstOrDefault(candidate => candidate.Path.Equals(path, StringComparison.OrdinalIgnoreCase));
         }
         if (item is null) return;
 
@@ -266,7 +276,7 @@ public sealed partial class MainWindow : Window
         }
         DispatcherQueue.TryEnqueue(() =>
         {
-            if (NoteList.SelectedItem is VaultItem selectedItem && selectedItem.Note?.Path == note.Path)
+            if (NoteList.SelectedItem is VaultItem selectedItem && selectedItem.Path.Equals(path, StringComparison.OrdinalIgnoreCase))
                 NoteList.ScrollIntoView(item);
         });
     }
@@ -855,17 +865,25 @@ public sealed partial class MainWindow : Window
     private void Search_TextChanged(object sender, TextChangedEventArgs e) { if (!_loading) ApplySearch(); }
     private void Refresh_Click(object sender, RoutedEventArgs e)
     {
+        var pdfPath = _pdfMode ? _currentPdfPath : null;
         var selectedPath = _selected?.Path;
         SaveCurrent();
         RefreshNotes();
+        if (pdfPath is not null && _pdfDocuments.Any(pdf => pdf.Path.Equals(pdfPath, StringComparison.OrdinalIgnoreCase)))
+        {
+            _ = ShowPdfModeAsync(pdfPath);
+            return;
+        }
         var selected = _notes.FirstOrDefault(note => note.Path.Equals(selectedPath, StringComparison.OrdinalIgnoreCase));
         if (selected is not null) Select(selected);
         else if (_notes.Count > 0) Select(_notes[0]);
     }
-    private void NoteList_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    private async void NoteList_SelectionChanged(object sender, SelectionChangedEventArgs e)
     {
         if (_loading || _suppressNoteListSelectionChanged) return;
-        if (NoteList.SelectedItem is VaultItem { Note: NoteInfo note }) SelectNoteInActiveDocument(note);
+        if (NoteList.SelectedItem is not VaultItem item) return;
+        if (item.Note is NoteInfo note) SelectNoteInActiveDocument(note);
+        else if (item.IsPdf) await ShowPdfModeAsync(item.Path);
     }
     private void BacklinkList_SelectionChanged(object sender, SelectionChangedEventArgs e)
     {

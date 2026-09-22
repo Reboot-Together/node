@@ -205,6 +205,36 @@ try
         new HashSet<string>(StringComparer.OrdinalIgnoreCase));
     if (!savedTwiceItems.Select(item => item.Name).SequenceEqual(["2 폴더", "10 노트", "10 폴더", "2 노트"]))
         throw new Exception("숨김 정렬 파일 재저장 실패");
+    var pdfRoot = Path.Combine(root, "PDF 자료 검사");
+    Directory.CreateDirectory(pdfRoot);
+    var pdfSource = Path.Combine(root, "외부 자료.pdf");
+    File.WriteAllText(pdfSource, "%PDF-1.4\n%%EOF");
+    var pdfService = new PdfDocumentService(pdfRoot);
+    var importedPdf = pdfService.Import(pdfSource, pdfRoot);
+    if (!File.Exists(importedPdf.Path) || pdfService.Load().Single().Title != "외부 자료")
+        throw new Exception("PDF 저장소 가져오기 및 검색 실패");
+    var pdfFolder = Directory.CreateDirectory(Path.Combine(pdfRoot, "PDF 폴더")).FullName;
+    var movedPdf = pdfService.Move(importedPdf.Path, pdfFolder);
+    var renamedPdf = pdfService.Rename(movedPdf.Path, "강의 자료");
+    var pdfFolders = treeService.LoadFolders(pdfRoot);
+    var pdfItems = treeService.Build(
+        pdfRoot,
+        [],
+        pdfFolders,
+        new HashSet<string>([pdfFolder], StringComparer.OrdinalIgnoreCase),
+        pdfs: pdfService.Load());
+    var pdfItem = pdfItems.Single(item => item.IsPdf);
+    if (pdfItem.Path != renamedPdf.Path || pdfItem.PdfIconOpacity != 1 || pdfItem.NoteDotOpacity != 0)
+        throw new Exception("탐색기 PDF 자료 표시 실패");
+    var searchedPdfItems = treeService.Build(
+        pdfRoot,
+        [],
+        pdfFolders,
+        new HashSet<string>(StringComparer.OrdinalIgnoreCase),
+        "강의",
+        pdfService.Load());
+    if (searchedPdfItems.All(item => !item.IsPdf || item.Path != renamedPdf.Path))
+        throw new Exception("탐색기 PDF 이름 검색 실패");
     var networkNotes = store.Load();
     var graphLinks = linkService.Build(networkNotes);
     var graphService = new GraphLayoutService();

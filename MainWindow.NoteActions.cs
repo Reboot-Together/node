@@ -64,7 +64,7 @@ public sealed partial class MainWindow
         var confirmation = new ContentDialog
         {
             Title = "폴더 삭제",
-            Content = $"'{Path.GetFileName(folder)}' 폴더와 안에 있는 모든 노트를 삭제할까요?\n\n가능하면 Windows 휴지통으로 이동합니다.",
+            Content = $"'{Path.GetFileName(folder)}' 폴더와 안에 있는 모든 자료를 삭제할까요?\n\n가능하면 Windows 휴지통으로 이동합니다.",
             PrimaryButtonText = "삭제",
             CloseButtonText = "취소",
             DefaultButton = ContentDialogButton.Close,
@@ -197,7 +197,7 @@ public sealed partial class MainWindow
 
     private void ShowInExplorer_Click(object sender, RoutedEventArgs e)
     {
-        var path = _contextNote?.Path ?? _contextFolder;
+        var path = _contextNote?.Path ?? _contextPdfPath ?? _contextFolder;
         if (path is null) return;
 
         var startInfo = new ProcessStartInfo("explorer.exe");
@@ -225,6 +225,7 @@ public sealed partial class MainWindow
         SaveCurrent();
         _workspace.SetRootPath(folder.Path);
         _repository.SetRootPath(folder.Path);
+        _pdfRepository.SetRootPath(folder.Path);
         _expandedFolders.Clear();
         _folderExpansionInitialized = false;
         _selected = null;

@@ -9,6 +9,7 @@ namespace AsterismApp;
 public sealed partial class MainWindow
 {
     private string? _contextFolder;
+    private string? _contextPdfPath;
     private VaultItem? _draggedItem;
     private FrameworkElement? _vaultDropElement;
     private VaultDropMode _vaultDropMode;
@@ -49,6 +50,7 @@ public sealed partial class MainWindow
 
         _contextNote = item.Note;
         _contextFolder = item.IsFolder ? item.Path : null;
+        _contextPdfPath = item.IsPdf ? item.Path : null;
         NoteList.SelectedItem = item;
 
         var menu = new MenuFlyout();
@@ -56,6 +58,7 @@ public sealed partial class MainWindow
         {
             menu.Items.Add(MenuItem("새 노트", ContextCreateNote_Click));
             menu.Items.Add(MenuItem("새 폴더", CreateFolder_Click));
+            menu.Items.Add(MenuItem("PDF 가져오기", ImportPdf_Click));
             if (!item.IsRoot)
             {
                 menu.Items.Add(new MenuFlyoutSeparator());
@@ -68,6 +71,17 @@ public sealed partial class MainWindow
                 menu.Items.Add(new MenuFlyoutSeparator());
                 menu.Items.Add(MenuItem("삭제", ContextDeleteFolder_Click));
             }
+        }
+        else if (item.IsPdf)
+        {
+            menu.Items.Add(MenuItem("열기", OpenContextPdf_Click));
+            menu.Items.Add(new MenuFlyoutSeparator());
+            menu.Items.Add(MenuItem("이름 변경", RenamePdf_Click));
+            menu.Items.Add(MenuItem("폴더로 이동", MovePdf_Click));
+            menu.Items.Add(new MenuFlyoutSeparator());
+            menu.Items.Add(MenuItem("탐색기에서 보기", ShowInExplorer_Click));
+            menu.Items.Add(new MenuFlyoutSeparator());
+            menu.Items.Add(MenuItem("삭제", ContextDeletePdf_Click));
         }
         else
         {
@@ -90,10 +104,12 @@ public sealed partial class MainWindow
     {
         _contextNote = null;
         _contextFolder = _workspace.RootPath;
+        _contextPdfPath = null;
 
         var menu = new MenuFlyout();
         menu.Items.Add(MenuItem("새 노트", ContextCreateNote_Click));
         menu.Items.Add(MenuItem("새 폴더", CreateFolder_Click));
+        menu.Items.Add(MenuItem("PDF 가져오기", ImportPdf_Click));
         menu.ShowAt(NoteList, e.GetPosition(NoteList));
         e.Handled = true;
     }
@@ -169,9 +185,15 @@ public sealed partial class MainWindow
                     destinationPath = _repository.Move(note.Path, target!.Path).Path;
                     _vaultTreeService.RemapOrderPath(_workspace.RootPath, sourcePath, destinationPath);
                 }
+                else if (source.IsPdf)
+                {
+                    destinationPath = _pdfRepository.Move(sourcePath, target!.Path).Path;
+                    _vaultTreeService.RemapOrderPath(_workspace.RootPath, sourcePath, destinationPath);
+                }
                 ExpandFolder(target!.Path);
                 RefreshNotes();
                 SelectByTitle(selectedTitle);
+                if (source.IsPdf) await ShowPdfModeAsync(destinationPath);
             }
             else
             {
@@ -193,6 +215,11 @@ public sealed partial class MainWindow
                         destinationPath = _repository.Move(note.Path, targetParent).Path;
                         _vaultTreeService.RemapOrderPath(_workspace.RootPath, sourcePath, destinationPath);
                     }
+                    else if (source.IsPdf)
+                    {
+                        destinationPath = _pdfRepository.Move(sourcePath, targetParent).Path;
+                        _vaultTreeService.RemapOrderPath(_workspace.RootPath, sourcePath, destinationPath);
+                    }
                     RefreshNotes();
                 }
 
@@ -200,7 +227,8 @@ public sealed partial class MainWindow
                     _workspace.RootPath,
                     targetParent,
                     _notes,
-                    _folders);
+                    _folders,
+                    _pdfDocuments);
                 _vaultTreeService.Reorder(
                     _workspace.RootPath,
                     targetParent,
@@ -210,6 +238,7 @@ public sealed partial class MainWindow
                     mode == VaultDropMode.After);
                 ApplySearch();
                 if (movedAcrossFolder) SelectByTitle(selectedTitle);
+                if (source.IsPdf) await ShowPdfModeAsync(destinationPath);
             }
         }
         catch (Exception exception)

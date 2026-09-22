@@ -23,6 +23,7 @@ public sealed partial class MainWindow
 
     private void SelectNoteInActiveDocument(NoteInfo note)
     {
+        if (_pdfMode) ShowDocumentMode();
         note = _notes.FirstOrDefault(candidate =>
             candidate.Path.Equals(note.Path, StringComparison.OrdinalIgnoreCase)) ?? note;
 

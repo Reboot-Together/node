@@ -49,6 +49,7 @@ public sealed partial class MainWindow
             DocumentGroupsHost.Visibility = Visibility.Visible;
             DocumentModeIndicator.Visibility = Visibility.Visible;
             ConstellationModeIndicator.Visibility = Visibility.Collapsed;
+            if (ActiveDocumentNote is { } note) RevealNoteInTree(note);
             DispatcherQueue.TryEnqueue(FocusActiveDocument);
             return;
         }

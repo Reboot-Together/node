@@ -14,21 +14,110 @@ public sealed partial class MainWindow
     private bool _pdfReaderInitializing;
     private string? _currentPdfPath;
 
-    private async void PdfMode_Click(object sender, RoutedEventArgs e)
+    private async void ImportPdfToRoot_Click(object sender, RoutedEventArgs e) =>
+        await PickAndImportPdfAsync(_workspace.RootPath);
+
+    private async void ChangePdf_Click(object sender, RoutedEventArgs e) =>
+        await PickAndImportPdfAsync(
+            _currentPdfPath is null ? _workspace.RootPath : Path.GetDirectoryName(_currentPdfPath)!);
+
+    private async void ImportPdf_Click(object sender, RoutedEventArgs e) =>
+        await PickAndImportPdfAsync(_contextFolder ?? _workspace.RootPath);
+
+    private async void OpenContextPdf_Click(object sender, RoutedEventArgs e)
     {
-        if (_pdfMode && _currentPdfPath is not null) return;
-        await PickAndOpenPdfAsync();
+        if (_contextPdfPath is not null) await ShowPdfModeAsync(_contextPdfPath);
     }
 
-    private async void ChangePdf_Click(object sender, RoutedEventArgs e) => await PickAndOpenPdfAsync();
+    private async void RenamePdf_Click(object sender, RoutedEventArgs e)
+    {
+        if (_contextPdfPath is not string path) return;
+        var name = await PromptForName("PDF 이름 변경", "새 PDF 이름", Path.GetFileNameWithoutExtension(path));
+        if (name is null || name.Equals(Path.GetFileNameWithoutExtension(path), StringComparison.Ordinal)) return;
 
-    private async Task PickAndOpenPdfAsync()
+        try
+        {
+            var renamed = _pdfRepository.Rename(path, name);
+            _vaultTreeService.RemapOrderPath(_workspace.RootPath, path, renamed.Path);
+            _contextPdfPath = renamed.Path;
+            RefreshNotes();
+            await ShowPdfModeAsync(renamed.Path);
+        }
+        catch (Exception exception)
+        {
+            await ShowMessage("이름 변경 실패", exception.Message);
+        }
+    }
+
+    private async void MovePdf_Click(object sender, RoutedEventArgs e)
+    {
+        if (_contextPdfPath is not string path) return;
+        var picker = CreateFolderPicker();
+        var folder = await picker.PickSingleFolderAsync();
+        if (folder is null) return;
+
+        try
+        {
+            var moved = _pdfRepository.Move(path, folder.Path);
+            _vaultTreeService.RemapOrderPath(_workspace.RootPath, path, moved.Path);
+            _contextPdfPath = moved.Path;
+            RefreshNotes();
+            await ShowPdfModeAsync(moved.Path);
+        }
+        catch (Exception exception)
+        {
+            await ShowMessage("이동 실패", $"PDF는 현재 저장소 내부의 폴더로만 이동할 수 있습니다.\n\n{exception.Message}");
+        }
+    }
+
+    private async void ContextDeletePdf_Click(object sender, RoutedEventArgs e)
+    {
+        if (_contextPdfPath is not string path) return;
+        var confirmation = new ContentDialog
+        {
+            Title = "PDF 삭제",
+            Content = $"'{Path.GetFileNameWithoutExtension(path)}' PDF를 삭제할까요?\n\n가능하면 Windows 휴지통으로 이동합니다.",
+            PrimaryButtonText = "삭제",
+            CloseButtonText = "취소",
+            DefaultButton = ContentDialogButton.Close,
+            XamlRoot = Root.XamlRoot
+        };
+        if (await confirmation.ShowAsync() != ContentDialogResult.Primary) return;
+
+        try
+        {
+            var wasOpen = _currentPdfPath?.Equals(path, StringComparison.OrdinalIgnoreCase) == true;
+            if (wasOpen) ShowDocumentMode();
+            _pdfRepository.MoveToTrash(path);
+            _vaultTreeService.RemoveOrderPath(_workspace.RootPath, path);
+            _contextPdfPath = null;
+            RefreshNotes();
+        }
+        catch (Exception exception)
+        {
+            await ShowMessage("삭제 실패", $"PDF를 삭제하지 못했습니다.\n\n{exception.Message}");
+        }
+    }
+
+    private async Task PickAndImportPdfAsync(string destinationFolder)
     {
         var picker = new FileOpenPicker();
         WinRT.Interop.InitializeWithWindow.Initialize(picker, WinRT.Interop.WindowNative.GetWindowHandle(this));
         picker.FileTypeFilter.Add(".pdf");
         StorageFile? file = await picker.PickSingleFileAsync();
-        if (file is not null) await ShowPdfModeAsync(file.Path);
+        if (file is null) return;
+
+        try
+        {
+            var pdf = _pdfRepository.Import(file.Path, destinationFolder);
+            ExpandFolder(Path.GetDirectoryName(pdf.Path)!);
+            RefreshNotes();
+            await ShowPdfModeAsync(pdf.Path);
+        }
+        catch (Exception exception)
+        {
+            await ShowMessage("PDF 가져오기 실패", exception.Message);
+        }
     }
 
     private async Task ShowPdfModeAsync(string path)
@@ -56,7 +145,7 @@ public sealed partial class MainWindow
         PdfPanel.Visibility = Visibility.Visible;
         DocumentModeIndicator.Visibility = Visibility.Collapsed;
         ConstellationModeIndicator.Visibility = Visibility.Collapsed;
-        PdfModeIndicator.Visibility = Visibility.Visible;
+        RevealVaultItemInTree(_currentPdfPath);
 
         try
         {
@@ -123,7 +212,6 @@ public sealed partial class MainWindow
         if (!_pdfMode && PdfPanel.Visibility != Visibility.Visible) return;
         _pdfMode = false;
         PdfPanel.Visibility = Visibility.Collapsed;
-        PdfModeIndicator.Visibility = Visibility.Collapsed;
         _currentPdfPath = null;
         PdfTitleText.Text = "PDF";
         PdfStatusText.Text = "";

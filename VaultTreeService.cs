@@ -31,19 +31,24 @@ public sealed class VaultTreeService
         string rootPath,
         string parentPath,
         IReadOnlyList<NoteInfo> notes,
-        IReadOnlyList<string> folders)
+        IReadOnlyList<string> folders,
+        IReadOnlyList<PdfInfo>? pdfs = null)
     {
         var parent = Path.GetFullPath(parentPath).TrimEnd(Path.DirectorySeparatorChar);
-        var defaultPaths = folders
+        var folderPaths = folders
             .Select(path => Path.GetFullPath(path).TrimEnd(Path.DirectorySeparatorChar))
             .Where(path => !path.Equals(Path.GetFullPath(rootPath).TrimEnd(Path.DirectorySeparatorChar), StringComparison.OrdinalIgnoreCase)
                 && Path.GetDirectoryName(path)?.Equals(parent, StringComparison.OrdinalIgnoreCase) == true)
-            .OrderBy(path => Path.GetFileName(path) ?? "", NameComparer)
-            .Concat(notes
+            .OrderBy(path => Path.GetFileName(path) ?? "", NameComparer);
+        var documentPaths = notes
                 .Where(note => Path.GetDirectoryName(note.Path)?.Equals(parent, StringComparison.OrdinalIgnoreCase) == true)
-                .OrderBy(note => note.Title, NameComparer)
-                .Select(note => note.Path));
-        return _orderService.Order(rootPath, parent, defaultPaths);
+                .Select(note => (note.Path, note.Title))
+            .Concat((pdfs ?? [])
+                .Where(pdf => Path.GetDirectoryName(pdf.Path)?.Equals(parent, StringComparison.OrdinalIgnoreCase) == true)
+                .Select(pdf => (pdf.Path, pdf.Title)))
+            .OrderBy(document => document.Title, NameComparer)
+            .Select(document => document.Path);
+        return _orderService.Order(rootPath, parent, folderPaths.Concat(documentPaths));
     }
 
     public IReadOnlyList<string> LoadFolders(string rootPath)
@@ -86,8 +91,10 @@ public sealed class VaultTreeService
         IReadOnlyList<NoteInfo> notes,
         IReadOnlyList<string> folders,
         IReadOnlySet<string> expandedFolders,
-        string? query = null)
+        string? query = null,
+        IReadOnlyList<PdfInfo>? pdfs = null)
     {
+        pdfs ??= [];
         var root = Path.GetFullPath(rootPath).TrimEnd(Path.DirectorySeparatorChar);
         var normalizedQuery = query?.Trim() ?? "";
         var notesByDirectory = notes
@@ -96,6 +103,13 @@ public sealed class VaultTreeService
         var visibleNotes = notes
             .Where(note => Matches(note, normalizedQuery))
             .Select(note => note.Path)
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var pdfsByDirectory = pdfs
+            .GroupBy(pdf => Path.GetDirectoryName(pdf.Path)!, StringComparer.OrdinalIgnoreCase)
+            .ToDictionary(group => group.Key, group => group.OrderBy(pdf => pdf.Title, NameComparer).ToList(), StringComparer.OrdinalIgnoreCase);
+        var visiblePdfs = pdfs
+            .Where(pdf => Matches(pdf, normalizedQuery))
+            .Select(pdf => pdf.Path)
             .ToHashSet(StringComparer.OrdinalIgnoreCase);
         var childFolders = folders
             .Select(path => Path.GetFullPath(path).TrimEnd(Path.DirectorySeparatorChar))
@@ -106,6 +120,7 @@ public sealed class VaultTreeService
                 group => group.OrderBy(path => Path.GetFileName(path), NameComparer).ToList(),
                 StringComparer.OrdinalIgnoreCase);
         var notesByPath = notes.ToDictionary(note => note.Path, StringComparer.OrdinalIgnoreCase);
+        var pdfsByPath = pdfs.ToDictionary(pdf => pdf.Path, StringComparer.OrdinalIgnoreCase);
         var folderPaths = folders.ToHashSet(StringComparer.OrdinalIgnoreCase);
         var result = new List<VaultItem>();
         AddChildren(root, 0, "", normalizedQuery.Length > 0);
@@ -115,7 +130,12 @@ public sealed class VaultTreeService
         {
             var defaultPaths = new List<string>();
             if (childFolders.TryGetValue(parent, out var childFolderPaths)) defaultPaths.AddRange(childFolderPaths);
-            if (notesByDirectory.TryGetValue(parent, out var childNotes)) defaultPaths.AddRange(childNotes.Select(note => note.Path));
+            var childDocuments = new List<(string Path, string Title)>();
+            if (notesByDirectory.TryGetValue(parent, out var childNotes))
+                childDocuments.AddRange(childNotes.Select(note => (note.Path, note.Title)));
+            if (pdfsByDirectory.TryGetValue(parent, out var childPdfs))
+                childDocuments.AddRange(childPdfs.Select(pdf => (pdf.Path, pdf.Title)));
+            defaultPaths.AddRange(childDocuments.OrderBy(document => document.Title, NameComparer).Select(document => document.Path));
             var ordered = _orderService.Order(root, parent, defaultPaths);
             for (var index = 0; index < ordered.Count; index++)
             {
@@ -131,6 +151,10 @@ public sealed class VaultTreeService
                 {
                     result.Add(new VaultItem(note.Title, note.Path, false, false, false, depth, note, number));
                 }
+                else if (pdfsByPath.TryGetValue(path, out var pdf) && visiblePdfs.Contains(path))
+                {
+                    result.Add(new VaultItem(pdf.Title, pdf.Path, false, false, false, depth, null, number));
+                }
             }
         }
     }
@@ -139,6 +163,9 @@ public sealed class VaultTreeService
         query.Length == 0
         || $"{note.Title}\n{note.Body}\n{note.Metadata.Category}\n{note.Metadata.Source}\n{note.Metadata.Type}"
             .Contains(query, StringComparison.OrdinalIgnoreCase);
+
+    private static bool Matches(PdfInfo pdf, string query) =>
+        query.Length == 0 || pdf.Title.Contains(query, StringComparison.OrdinalIgnoreCase);
 
     private static int CompareNames(string? left, string? right)
     {

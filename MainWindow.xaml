@@ -40,15 +40,16 @@
       </Grid.ColumnDefinitions>
       <Border x:Name="ExplorerPanel" Background="{StaticResource SidebarBackground}" BorderBrush="{StaticResource CardBorder}" BorderThickness="0,0,1,0" Padding="10,12,9,10">
         <Grid RowDefinitions="Auto,Auto,*" RowSpacing="10">
-          <Grid ColumnDefinitions="*,Auto,Auto" Margin="2,0">
+          <Grid ColumnDefinitions="*,Auto,Auto,Auto" Margin="2,0">
             <StackPanel Orientation="Horizontal" Spacing="7" VerticalAlignment="Center">
               <TextBlock Text="▱" Foreground="{StaticResource PrimaryText}" FontSize="{Binding Ui, Source={StaticResource Typography}}" />
-              <TextBlock Text="노트" FontSize="{Binding Ui, Source={StaticResource Typography}}" FontWeight="SemiBold" />
+              <TextBlock Text="자료" FontSize="{Binding Ui, Source={StaticResource Typography}}" FontWeight="SemiBold" />
             </StackPanel>
-            <Button Grid.Column="1" Content="↻" Style="{StaticResource QuietButton}" Padding="7,3" MinWidth="0" Click="Refresh_Click" />
-            <Button Grid.Column="2" Content="‹" Style="{StaticResource QuietButton}" Padding="7,3" MinWidth="0" Click="ExplorerCollapse_Click" ToolTipService.ToolTip="노트 탐색기 접기" />
+            <Button Grid.Column="1" Content="PDF＋" Style="{StaticResource QuietButton}" Padding="6,3" MinWidth="0" Click="ImportPdfToRoot_Click" ToolTipService.ToolTip="PDF를 저장소에 추가" />
+            <Button Grid.Column="2" Content="↻" Style="{StaticResource QuietButton}" Padding="7,3" MinWidth="0" Click="Refresh_Click" />
+            <Button Grid.Column="3" Content="‹" Style="{StaticResource QuietButton}" Padding="7,3" MinWidth="0" Click="ExplorerCollapse_Click" ToolTipService.ToolTip="자료 탐색기 접기" />
           </Grid>
-          <TextBox x:Name="SearchBox" Grid.Row="1" Style="{StaticResource Field}" PlaceholderText="⌕  제목, 본문 검색" TextChanged="Search_TextChanged" />
+          <TextBox x:Name="SearchBox" Grid.Row="1" Style="{StaticResource Field}" PlaceholderText="⌕  노트 본문·PDF 이름 검색" TextChanged="Search_TextChanged" />
           <ListView x:Name="NoteList" Grid.Row="2" Background="Transparent" BorderThickness="0" SelectionChanged="NoteList_SelectionChanged" SelectionMode="Single" CanDragItems="True" DragItemsStarting="NoteList_DragItemsStarting" RightTapped="NoteList_RightTapped" ScrollViewer.VerticalScrollBarVisibility="Auto">
             <ListView.ItemContainerTransitions>
               <TransitionCollection />
@@ -78,6 +79,12 @@
                         <Path Data="M1.5,4.4 C1.5,3.7 2.05,3.15 2.75,3.15 L6.15,3.15 L7.45,4.65 L13.25,4.65 C13.95,4.65 14.5,5.2 14.5,5.9 L14.5,11.6 C14.5,12.3 13.95,12.85 13.25,12.85 L2.75,12.85 C2.05,12.85 1.5,12.3 1.5,11.6 Z M1.5,6.05 L14.5,6.05" Fill="Transparent" Stroke="{StaticResource PrimaryText}" StrokeThickness="1.25" StrokeStartLineCap="Round" StrokeEndLineCap="Round" StrokeLineJoin="Round" Opacity="0.82" />
                       </Canvas>
                     </Viewbox>
+                    <Viewbox Grid.Column="2" Width="12" Height="12" Opacity="{x:Bind PdfIconOpacity}" HorizontalAlignment="Center" VerticalAlignment="Center" IsHitTestVisible="False">
+                      <Canvas Width="16" Height="16">
+                        <Path Data="M3,1.5 L9.5,1.5 L13,5 L13,14.5 L3,14.5 Z M9.5,1.5 L9.5,5 L13,5" Fill="Transparent" Stroke="{StaticResource PrimaryText}" StrokeThickness="1.2" StrokeStartLineCap="Round" StrokeEndLineCap="Round" StrokeLineJoin="Round" Opacity="0.82" />
+                        <Path Data="M5,8.2 L11,8.2 M5,10.5 L9.8,10.5 M5,12.8 L8.3,12.8" Fill="Transparent" Stroke="{StaticResource MutedText}" StrokeThickness="1" StrokeStartLineCap="Round" Opacity="0.85" />
+                      </Canvas>
+                    </Viewbox>
                     <TextBlock Grid.Column="3" Text="{x:Bind DisplayName}" Height="14" VerticalAlignment="Center" FontSize="{Binding Ui, Source={StaticResource Typography}}" FontWeight="Normal" Foreground="{StaticResource PrimaryText}" LineHeight="14" LineStackingStrategy="BlockLineHeight" TextTrimming="CharacterEllipsis" />
                   </Grid>
                 </Border>
@@ -96,10 +103,6 @@
           <Grid>
             <Button x:Name="ConstellationModeButton" Content="성좌 지도" Style="{StaticResource QuietButton}" Padding="12,5" MinWidth="0" Click="ConstellationMode_Click" ToolTipService.ToolTip="현재 노트의 성좌 지도 열기 (Ctrl+G)" />
             <Border x:Name="ConstellationModeIndicator" Height="2" Background="{StaticResource Positive}" VerticalAlignment="Bottom" Margin="8,0" Visibility="Collapsed" IsHitTestVisible="False" />
-          </Grid>
-          <Grid>
-            <Button x:Name="PdfModeButton" Content="PDF" Style="{StaticResource QuietButton}" Padding="12,5" MinWidth="0" Click="PdfMode_Click" ToolTipService.ToolTip="PDF 리더 열기" />
-            <Border x:Name="PdfModeIndicator" Height="2" Background="{StaticResource Positive}" VerticalAlignment="Bottom" Margin="8,0" Visibility="Collapsed" IsHitTestVisible="False" />
           </Grid>
         </StackPanel>
       </Border>
@@ -233,7 +236,7 @@
               <TextBlock x:Name="PdfTitleText" Text="PDF" FontWeight="SemiBold" FontSize="{Binding Ui, Source={StaticResource Typography}}" Foreground="{StaticResource PrimaryText}" TextTrimming="CharacterEllipsis" />
               <TextBlock x:Name="PdfStatusText" Text="PDF 파일을 선택해 주세요." FontSize="{Binding Small, Source={StaticResource Typography}}" Foreground="{StaticResource MutedText}" TextTrimming="CharacterEllipsis" />
             </StackPanel>
-            <Button Grid.Column="1" Content="다른 PDF" Style="{StaticResource QuietButton}" Padding="9,5" MinWidth="0" Click="ChangePdf_Click" />
+            <Button Grid.Column="1" Content="PDF 추가" Style="{StaticResource QuietButton}" Padding="9,5" MinWidth="0" Click="ChangePdf_Click" />
             <Button Grid.Column="2" Content="파일 위치" Style="{StaticResource QuietButton}" Padding="9,5" MinWidth="0" Click="OpenPdfLocation_Click" />
             <Button Grid.Column="3" Content="닫기" Style="{StaticResource QuietButton}" Padding="9,5" MinWidth="0" Click="ClosePdf_Click" />
           </Grid>
