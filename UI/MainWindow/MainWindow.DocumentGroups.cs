@@ -146,6 +146,43 @@ public sealed partial class MainWindow
     private NoteInfo SaveSideDocument(NoteInfo previous, string title, string body)
     {
         if (previous.IsReadOnly) return previous;
+        if (previous.IsPlainText)
+        {
+            var textLinksChanged = !_linkService.ExtractTargets(previous.Body).SetEquals(_linkService.ExtractTargets(body));
+            var textSaved = previous;
+            if (!previous.Title.Equals(title, StringComparison.Ordinal))
+            {
+                textSaved = _textRepository.Rename(previous.Path, title);
+                _vaultTreeService.RemapOrderPath(_workspace.RootPath, previous.Path, textSaved.Path);
+            }
+            textSaved = _textRepository.Save(textSaved.Path, body);
+            ReplaceIndexedNote(previous.Path, textSaved);
+
+            if (_selected?.Path.Equals(previous.Path, StringComparison.OrdinalIgnoreCase) == true
+                && TitleBox.Text == previous.Title
+                && Editor.Text == previous.Body)
+            {
+                _loading = true;
+                _selected = textSaved;
+                TitleBox.Text = textSaved.Title;
+                Editor.Text = textSaved.Body;
+                _loading = false;
+                UpdateMarkdownPreview();
+            }
+
+            var textTitleChanged = !previous.Title.Equals(textSaved.Title, StringComparison.Ordinal);
+            var textBodyChanged = previous.Body != textSaved.Body;
+            if (textTitleChanged) ApplySearch();
+            if (textTitleChanged || textLinksChanged)
+            {
+                RefreshLinkIndex();
+                UpdateBacklinks();
+                DrawGraph();
+            }
+            if (textTitleChanged || textBodyChanged) QueueSemanticRefresh();
+            return textSaved;
+        }
+
         var linksChanged = !_linkService.ExtractTargets(previous.Body).SetEquals(_linkService.ExtractTargets(body));
         var saved = _repository.Save(previous.Path, title, body, previous.Metadata, previous.Title);
         var noteIndex = _notes.FindIndex(note =>

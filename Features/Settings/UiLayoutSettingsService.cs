@@ -8,9 +8,10 @@ public sealed record UiLayoutSettings(
     double InspectorWidth = 348,
     double FontScale = 1,
     string AccentTheme = "gold",
-    string SurfaceTheme = "dark")
+    string SurfaceTheme = "dark",
+    double ExplorerWidth = 232)
 {
-    public static UiLayoutSettings Default { get; } = new(.68, false, 348, 1, "gold", "dark");
+    public static UiLayoutSettings Default { get; } = new(.68, false, 348, 1, "gold", "dark", 232);
 }
 
 public sealed class UiLayoutSettingsService
@@ -46,6 +47,7 @@ public sealed class UiLayoutSettingsService
         {
             PreviewRatio = Math.Clamp(settings.PreviewRatio, .3, .85),
             InspectorWidth = Math.Clamp(settings.InspectorWidth <= 0 ? 348 : settings.InspectorWidth, 240, 720),
+            ExplorerWidth = Math.Clamp(settings.ExplorerWidth <= 0 ? 232 : settings.ExplorerWidth, 180, 520),
             FontScale = Math.Clamp(settings.FontScale <= 0 ? 1 : settings.FontScale, .8, 1.4),
             AccentTheme = new[] { "gold", "blue", "teal", "purple" }.Contains(
                 settings.AccentTheme,

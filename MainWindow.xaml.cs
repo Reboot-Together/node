@@ -20,6 +20,7 @@ public sealed partial class MainWindow : Window
     private readonly WorkspaceService _workspace = new();
     private readonly UiLayoutSettingsService _uiLayoutSettingsService = new();
     private readonly NoteRepository _repository;
+    private readonly TextDocumentService _textRepository;
     private readonly PdfDocumentService _pdfRepository;
     private readonly NoteLinkService _linkService = new();
     private readonly NoteImageService _imageService = new();
@@ -58,6 +59,7 @@ public sealed partial class MainWindow : Window
     public MainWindow()
     {
         _repository = new NoteRepository(_workspace.RootPath);
+        _textRepository = new TextDocumentService(_workspace.RootPath);
         _pdfRepository = new PdfDocumentService(_workspace.RootPath);
         InitializeComponent();
         GraphCanvas.AddHandler(
@@ -107,7 +109,10 @@ public sealed partial class MainWindow : Window
 
     private void RefreshNotes()
     {
-        _notes = _repository.Load();
+        // Markdown and TXT are both editable knowledge resources.  Keeping them
+        // in one index means wiki links, backlinks, semantic suggestions and the
+        // constellation use the same source of truth regardless of extension.
+        _notes = [.. _repository.Load(), .. _textRepository.Load()];
         _pdfDocuments = _pdfRepository.Load();
         _folders = _vaultTreeService.LoadFolders(_workspace.RootPath);
         if (!_folderExpansionInitialized)
@@ -173,6 +178,16 @@ public sealed partial class MainWindow : Window
         if (parentFolder is not null) ExpandFolder(parentFolder);
         RefreshNotes();
         Select(note, focusEditor: true);
+    }
+
+    private void NewTextDocument(string? parentFolder = null)
+    {
+        SaveCurrent();
+        var folder = parentFolder ?? _workspace.RootPath;
+        var text = _textRepository.Create(folder, "새 텍스트");
+        ExpandFolder(folder);
+        RefreshNotes();
+        Select(text, focusEditor: true);
     }
 
     private void Select(NoteInfo note, bool focusEditor = false)
@@ -288,6 +303,12 @@ public sealed partial class MainWindow : Window
         if (_loading || _selected is null || _selected.IsReadOnly) return;
         _saveTimer.Stop();
         var previous = _selected;
+        if (previous.IsPlainText)
+        {
+            SaveTextDocument(previous);
+            return;
+        }
+
         var metadata = MetadataFromEditor();
         var title = MarkdownText.NormalizeTitle(TitleBox.Text);
         var body = MarkdownText.NormalizeNewlines(Editor.Text).Trim();
@@ -323,6 +344,49 @@ public sealed partial class MainWindow : Window
         }
         if (titleChanged || linksChanged || metadataChanged) DrawGraph();
         if (titleChanged || bodyChanged) QueueSemanticRefresh();
+    }
+
+    private NoteInfo SaveTextDocument(NoteInfo previous)
+    {
+        var title = MarkdownText.NormalizeTitle(TitleBox.Text);
+        var body = Editor.Text;
+        if (TitleBox.Text != title)
+        {
+            _loading = true;
+            TitleBox.Text = title;
+            _loading = false;
+        }
+        if (previous.Title == title && previous.Body == body) return previous;
+
+        var linksChanged = !_linkService.ExtractTargets(previous.Body).SetEquals(_linkService.ExtractTargets(body));
+        var saved = previous;
+        if (!previous.Title.Equals(title, StringComparison.Ordinal))
+        {
+            saved = _textRepository.Rename(previous.Path, title);
+            _vaultTreeService.RemapOrderPath(_workspace.RootPath, previous.Path, saved.Path);
+        }
+        saved = _textRepository.Save(saved.Path, body);
+        _selected = saved;
+        ReplaceIndexedNote(previous.Path, saved);
+
+        var titleChanged = !previous.Title.Equals(saved.Title, StringComparison.Ordinal);
+        var bodyChanged = previous.Body != saved.Body;
+        if (titleChanged) ApplySearch();
+        if (titleChanged || linksChanged)
+        {
+            RefreshLinkIndex();
+            UpdateBacklinks();
+            DrawGraph();
+        }
+        if (titleChanged || bodyChanged) QueueSemanticRefresh();
+        return saved;
+    }
+
+    private void ReplaceIndexedNote(string previousPath, NoteInfo saved)
+    {
+        var noteIndex = _notes.FindIndex(note => note.Path.Equals(previousPath, StringComparison.OrdinalIgnoreCase));
+        if (noteIndex >= 0) _notes[noteIndex] = saved;
+        else _notes.Add(saved);
     }
 
     private void Editor_TextChanged(object sender, TextChangedEventArgs e)
@@ -507,7 +571,7 @@ public sealed partial class MainWindow : Window
     private void ShowEditorAndPreview()
     {
         var readOnly = _selected?.IsReadOnly == true;
-        DocumentKindText.Text = readOnly ? "GUIDE" : "NOTE";
+        DocumentKindText.Text = readOnly ? "GUIDE" : _selected?.IsPlainText == true ? "TEXT" : "NOTE";
         ReadOnlyBadge.Visibility = readOnly ? Visibility.Visible : Visibility.Collapsed;
         TitleBox.IsReadOnly = readOnly;
         TitleBox.IsHitTestVisible = !readOnly;
@@ -562,6 +626,29 @@ public sealed partial class MainWindow : Window
 
     private void ExplorerOpen_Click(object sender, RoutedEventArgs e) => SetExplorerCollapsed(false);
 
+    private void ExplorerToggle_Invoked(
+        KeyboardAccelerator sender,
+        KeyboardAcceleratorInvokedEventArgs args)
+    {
+        args.Handled = true;
+        SetExplorerCollapsed(!_uiLayoutSettings.ExplorerCollapsed);
+    }
+
+    private void ExplorerDivider_DragDelta(object sender, DragDeltaEventArgs e)
+    {
+        if (_uiLayoutSettings.ExplorerCollapsed) return;
+        var availableMaximum = Root.ActualWidth > 0
+            ? Math.Max(180, Root.ActualWidth - 480)
+            : 520;
+        var maximum = Math.Min(520, availableMaximum);
+        var width = Math.Clamp(ExplorerColumn.ActualWidth + e.HorizontalChange, 180, maximum);
+        ExplorerColumn.Width = new GridLength(width);
+        _uiLayoutSettings = _uiLayoutSettings with { ExplorerWidth = width };
+    }
+
+    private void ExplorerDivider_DragCompleted(object sender, DragCompletedEventArgs e) =>
+        _uiLayoutSettingsService.Save(_uiLayoutSettings);
+
     private void SetExplorerCollapsed(bool collapsed)
     {
         ApplyExplorerState(collapsed);
@@ -572,7 +659,9 @@ public sealed partial class MainWindow : Window
     private void ApplyExplorerState(bool collapsed)
     {
         ExplorerPanel.Visibility = collapsed ? Visibility.Collapsed : Visibility.Visible;
-        ExplorerColumn.Width = collapsed ? new GridLength(0) : new GridLength(232);
+        ExplorerResizeDivider.Visibility = collapsed ? Visibility.Collapsed : Visibility.Visible;
+        ExplorerColumn.Width = collapsed ? new GridLength(0) : new GridLength(_uiLayoutSettings.ExplorerWidth);
+        ExplorerDividerColumn.Width = collapsed ? new GridLength(0) : new GridLength(8);
         ExplorerOpenButton.Visibility = collapsed ? Visibility.Visible : Visibility.Collapsed;
         DocumentPanel.Padding = new Thickness(28, 18, 28, 12);
     }

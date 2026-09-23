@@ -59,11 +59,12 @@ try
     var uiSettingsPath = Path.Combine(root, "ui-layout.json");
     var uiSettingsService = new UiLayoutSettingsService(uiSettingsPath);
     if (uiSettingsService.Load() != UiLayoutSettings.Default) throw new Exception("UI 배치 기본값 로드 실패");
-    uiSettingsService.Save(new UiLayoutSettings(.72, true, 420, 1.15, "blue", "light"));
+    uiSettingsService.Save(new UiLayoutSettings(.72, true, 420, 1.15, "blue", "light", 310));
     var savedUiSettings = uiSettingsService.Load();
     if (Math.Abs(savedUiSettings.PreviewRatio - .72) > .001
         || !savedUiSettings.ExplorerCollapsed
         || Math.Abs(savedUiSettings.InspectorWidth - 420) > .001
+        || Math.Abs(savedUiSettings.ExplorerWidth - 310) > .001
         || Math.Abs(savedUiSettings.FontScale - 1.15) > .001
         || savedUiSettings.AccentTheme != "blue"
         || savedUiSettings.SurfaceTheme != "light")
@@ -102,7 +103,7 @@ try
         var semanticNotes = new[]
         {
             new NoteInfo("커넥션 풀", Path.Combine(root, "pool.md"), "데이터베이스 연결을 미리 여러 개 만들고 반복해서 재사용한다.", DateTime.Now, NoteMetadata.Manual),
-            new NoteInfo("DB 연결 재사용", Path.Combine(root, "reuse.md"), "DB 접속 연결을 준비해 두고 요청마다 빌려 쓰는 방식이다.", DateTime.Now, NoteMetadata.Manual),
+            new NoteInfo("DB 연결 재사용", Path.Combine(root, "reuse.txt"), "DB 접속 연결을 준비해 두고 요청마다 빌려 쓰는 방식이다.", DateTime.Now, new NoteMetadata("Text", DateTime.Today, "File", "Text"), IsPlainText: true),
             new NoteInfo("수채화", Path.Combine(root, "paint.md"), "물감과 붓으로 풍경화를 그리는 방법을 기록한다.", DateTime.Now, NoteMetadata.Manual)
         };
         var firstIndex = await semanticService.BuildAsync(root, semanticNotes);
@@ -235,6 +236,31 @@ try
         pdfService.Load());
     if (searchedPdfItems.All(item => !item.IsPdf || item.Path != renamedPdf.Path))
         throw new Exception("탐색기 PDF 이름 검색 실패");
+    var textRoot = Path.Combine(root, "TXT 자료 검사");
+    Directory.CreateDirectory(textRoot);
+    var textService = new TextDocumentService(textRoot);
+    var textFolder = Directory.CreateDirectory(Path.Combine(textRoot, "텍스트 폴더")).FullName;
+    var text = textService.Create(textFolder, "연결된 텍스트");
+    var textBody = "# 텍스트 자료\n\n[[원본]]\n\n끝 공백 보존  \n";
+    text = textService.Save(text.Path, textBody);
+    if (!text.IsPlainText || text.Body != textBody || text.Metadata.Type != "Text")
+        throw new Exception("TXT 직접 편집 내용 및 자료형 보존 실패");
+    var renamedText = textService.Rename(text.Path, "이름 바뀐 텍스트");
+    var movedText = textService.Move(renamedText.Path, textRoot);
+    if (!File.Exists(movedText.Path) || Path.GetDirectoryName(movedText.Path) != textRoot)
+        throw new Exception("TXT 이름 변경 및 폴더 이동 실패");
+    List<NoteInfo> mixedResources = [.. store.Load(), .. textService.Load()];
+    var textLinks = linkService.Build(mixedResources);
+    if (!textLinks[movedText.Title].Contains(source.Title, StringComparer.OrdinalIgnoreCase))
+        throw new Exception("TXT 위키 링크 인식 실패");
+    var textItems = treeService.Build(
+        textRoot,
+        textService.Load(),
+        treeService.LoadFolders(textRoot),
+        new HashSet<string>(StringComparer.OrdinalIgnoreCase));
+    var textItem = textItems.Single(item => item.Path == movedText.Path);
+    if (!textItem.IsText || textItem.TextIconOpacity != 1 || textItem.NoteDotOpacity != 0)
+        throw new Exception("탐색기 TXT 자료 표시 실패");
     var networkNotes = store.Load();
     var graphLinks = linkService.Build(networkNotes);
     var graphService = new GraphLayoutService();

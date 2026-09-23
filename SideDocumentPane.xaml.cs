@@ -99,7 +99,7 @@ public sealed partial class SideDocumentPane : UserControl
         TitleBox.IsReadOnly = note.IsReadOnly;
         TitleBox.IsHitTestVisible = !note.IsReadOnly;
         TitleBox.IsTabStop = !note.IsReadOnly;
-        DocumentKindText.Text = note.IsReadOnly ? "GUIDE" : "SIDE NOTE";
+        DocumentKindText.Text = note.IsReadOnly ? "GUIDE" : note.IsPlainText ? "SIDE TEXT" : "SIDE NOTE";
         StatusText.Text = note.IsReadOnly ? "읽기 전용 · 앱과 함께 자동 업데이트" : "";
         StatusText.Visibility = note.IsReadOnly ? Visibility.Visible : Visibility.Collapsed;
         Editor.Text = note.Body;
@@ -167,7 +167,7 @@ public sealed partial class SideDocumentPane : UserControl
         if (_loading || _note.IsReadOnly) return true;
         _saveTimer.Stop();
         var title = MarkdownText.NormalizeTitle(TitleBox.Text);
-        var body = MarkdownText.NormalizeNewlines(Editor.Text).Trim();
+        var body = _note.IsPlainText ? Editor.Text : MarkdownText.NormalizeNewlines(Editor.Text).Trim();
         if (_note.Title == title && _note.Body == body) return true;
 
         try

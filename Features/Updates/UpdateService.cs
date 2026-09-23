@@ -22,9 +22,9 @@ public sealed record AsterismRelease(
 public sealed class UpdateService
 {
     private const string ReleasesApiUrl =
-        "https://api.github.com/repos/Reboot-Together/node/releases?per_page=20";
+        "https://api.github.com/repos/Reboot-Together/asterism/releases?per_page=20";
     private const string AllowedAssetPrefix =
-        "https://github.com/Reboot-Together/node/releases/download/";
+        "https://github.com/Reboot-Together/asterism/releases/download/";
 
     private readonly HttpClient _client;
 

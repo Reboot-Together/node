@@ -5,7 +5,14 @@ public sealed record NoteMetadata(string Category, DateTime Created, string Sour
     public static NoteMetadata Manual => new("Inbox", DateTime.Today, "Manual", "Note");
 }
 
-public sealed record NoteInfo(string Title, string Path, string Body, DateTime LastWriteTime, NoteMetadata Metadata, bool IsReadOnly = false);
+public sealed record NoteInfo(
+    string Title,
+    string Path,
+    string Body,
+    DateTime LastWriteTime,
+    NoteMetadata Metadata,
+    bool IsReadOnly = false,
+    bool IsPlainText = false);
 
 public sealed record PdfInfo(string Title, string Path, DateTime LastWriteTime);
 
@@ -27,10 +34,12 @@ public sealed record VaultItem(
     public string DisplayName => OrderNumber.Length == 0 ? Name : $"{OrderNumber}  {Name}";
     public double Indent => Depth * 14;
     public bool IsPdf => !IsFolder && Note is null && PdfReaderRules.IsPdf(Path);
+    public bool IsText => !IsFolder && Note?.IsPlainText == true;
     public double CollapsedChevronOpacity => IsFolder && !IsRoot && !IsExpanded ? 1 : 0;
     public double ExpandedChevronOpacity => IsFolder && !IsRoot && IsExpanded ? 1 : 0;
-    public double NoteDotOpacity => IsFolder || IsPdf ? 0 : 1;
+    public double NoteDotOpacity => IsFolder || IsPdf || IsText ? 0 : 1;
     public double FolderIconOpacity => IsFolder ? 1 : 0;
     public double PdfIconOpacity => IsPdf ? 1 : 0;
+    public double TextIconOpacity => IsText ? 1 : 0;
     public bool IsVirtual => Path.StartsWith("asterism-guide://", StringComparison.OrdinalIgnoreCase);
 }

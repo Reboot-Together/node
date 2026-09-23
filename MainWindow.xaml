@@ -4,9 +4,10 @@
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
     xmlns:local="using:AsterismApp"
     Title="Asterism">
-  <Grid x:Name="Root" Background="{StaticResource AppBackground}" RowDefinitions="48,*">
+  <Grid x:Name="Root" Background="{StaticResource AppBackground}" RowDefinitions="48,*" KeyboardAcceleratorPlacementMode="Hidden">
     <Grid.KeyboardAccelerators>
       <KeyboardAccelerator Key="G" Modifiers="Control" Invoked="WorkspaceGraph_Invoked" />
+      <KeyboardAccelerator Key="B" Modifiers="Control" Invoked="ExplorerToggle_Invoked" />
       <KeyboardAccelerator Key="Escape" Invoked="WorkspaceEscape_Invoked" />
     </Grid.KeyboardAccelerators>
     <Border x:Name="AppTitleBar" Background="{StaticResource AppBackground}" BorderBrush="{StaticResource CardBorder}" BorderThickness="0,0,0,1" Padding="12,0">
@@ -36,18 +37,20 @@
     <Grid Grid.Row="1">
       <Grid.ColumnDefinitions>
         <ColumnDefinition x:Name="ExplorerColumn" Width="232" />
+        <ColumnDefinition x:Name="ExplorerDividerColumn" Width="8" />
         <ColumnDefinition Width="*" />
       </Grid.ColumnDefinitions>
       <Border x:Name="ExplorerPanel" Background="{StaticResource SidebarBackground}" BorderBrush="{StaticResource CardBorder}" BorderThickness="0,0,1,0" Padding="10,12,9,10">
         <Grid RowDefinitions="Auto,Auto,*" RowSpacing="10">
-          <Grid ColumnDefinitions="*,Auto,Auto,Auto" Margin="2,0">
+          <Grid ColumnDefinitions="*,Auto,Auto,Auto,Auto" Margin="2,0">
             <StackPanel Orientation="Horizontal" Spacing="7" VerticalAlignment="Center">
               <TextBlock Text="▱" Foreground="{StaticResource PrimaryText}" FontSize="{Binding Ui, Source={StaticResource Typography}}" />
               <TextBlock Text="자료" FontSize="{Binding Ui, Source={StaticResource Typography}}" FontWeight="SemiBold" />
             </StackPanel>
-            <Button Grid.Column="1" Content="PDF＋" Style="{StaticResource QuietButton}" Padding="6,3" MinWidth="0" Click="ImportPdfToRoot_Click" ToolTipService.ToolTip="PDF를 저장소에 추가" />
-            <Button Grid.Column="2" Content="↻" Style="{StaticResource QuietButton}" Padding="7,3" MinWidth="0" Click="Refresh_Click" />
-            <Button Grid.Column="3" Content="‹" Style="{StaticResource QuietButton}" Padding="7,3" MinWidth="0" Click="ExplorerCollapse_Click" ToolTipService.ToolTip="자료 탐색기 접기" />
+            <Button Grid.Column="1" Content="TXT＋" Style="{StaticResource QuietButton}" Padding="6,3" MinWidth="0" Click="NewTextToRoot_Click" ToolTipService.ToolTip="저장소 최상단에 새 TXT 자료 만들기" />
+            <Button Grid.Column="2" Content="PDF＋" Style="{StaticResource QuietButton}" Padding="6,3" MinWidth="0" Click="ImportPdfToRoot_Click" ToolTipService.ToolTip="PDF를 저장소에 추가" />
+            <Button Grid.Column="3" Content="↻" Style="{StaticResource QuietButton}" Padding="7,3" MinWidth="0" Click="Refresh_Click" />
+            <Button Grid.Column="4" Content="‹" Style="{StaticResource QuietButton}" Padding="7,3" MinWidth="0" Click="ExplorerCollapse_Click" ToolTipService.ToolTip="자료 탐색기 접기" />
           </Grid>
           <TextBox x:Name="SearchBox" Grid.Row="1" Style="{StaticResource Field}" PlaceholderText="⌕  노트 본문·PDF 이름 검색" TextChanged="Search_TextChanged" />
           <ListView x:Name="NoteList" Grid.Row="2" Background="Transparent" BorderThickness="0" SelectionChanged="NoteList_SelectionChanged" SelectionMode="Single" CanDragItems="True" DragItemsStarting="NoteList_DragItemsStarting" RightTapped="NoteList_RightTapped" ScrollViewer.VerticalScrollBarVisibility="Auto">
@@ -85,6 +88,12 @@
                         <Path Data="M5,8.2 L11,8.2 M5,10.5 L9.8,10.5 M5,12.8 L8.3,12.8" Fill="Transparent" Stroke="{StaticResource MutedText}" StrokeThickness="1" StrokeStartLineCap="Round" Opacity="0.85" />
                       </Canvas>
                     </Viewbox>
+                    <Viewbox Grid.Column="2" Width="12" Height="12" Opacity="{x:Bind TextIconOpacity}" HorizontalAlignment="Center" VerticalAlignment="Center" IsHitTestVisible="False">
+                      <Canvas Width="16" Height="16">
+                        <Path Data="M3,1.5 L9.5,1.5 L13,5 L13,14.5 L3,14.5 Z M9.5,1.5 L9.5,5 L13,5" Fill="Transparent" Stroke="{StaticResource PrimaryText}" StrokeThickness="1.2" StrokeStartLineCap="Round" StrokeEndLineCap="Round" StrokeLineJoin="Round" Opacity="0.82" />
+                        <Path Data="M5,8 L11,8 M5,10.4 L11,10.4 M5,12.8 L9,12.8" Fill="Transparent" Stroke="{StaticResource MutedText}" StrokeThickness="1" StrokeStartLineCap="Round" Opacity="0.85" />
+                      </Canvas>
+                    </Viewbox>
                     <TextBlock Grid.Column="3" Text="{x:Bind DisplayName}" Height="14" VerticalAlignment="Center" FontSize="{Binding Ui, Source={StaticResource Typography}}" FontWeight="Normal" Foreground="{StaticResource PrimaryText}" LineHeight="14" LineStackingStrategy="BlockLineHeight" TextTrimming="CharacterEllipsis" />
                   </Grid>
                 </Border>
@@ -94,7 +103,14 @@
         </Grid>
       </Border>
 
-      <Border Grid.Column="1" Background="{StaticResource DocumentBackground}" BorderBrush="{StaticResource CardBorder}" BorderThickness="0,0,0,1" Height="38" VerticalAlignment="Top" Canvas.ZIndex="20">
+      <Grid x:Name="ExplorerResizeDivider" Grid.Column="1" Background="Transparent" AutomationProperties.Name="자료 탐색기 너비 조절" ToolTipService.ToolTip="드래그하여 자료 탐색기 너비 조절">
+        <Border Width="1" Background="{StaticResource CardBorder}" HorizontalAlignment="Center" IsHitTestVisible="False" />
+        <local:HorizontalResizeBorder Background="Transparent" HorizontalAlignment="Stretch" VerticalAlignment="Stretch">
+          <Thumb Background="Transparent" HorizontalAlignment="Stretch" VerticalAlignment="Stretch" AutomationProperties.Name="자료 탐색기 너비 조절 손잡이" DragDelta="ExplorerDivider_DragDelta" DragCompleted="ExplorerDivider_DragCompleted" />
+        </local:HorizontalResizeBorder>
+      </Grid>
+
+      <Border Grid.Column="2" Background="{StaticResource DocumentBackground}" BorderBrush="{StaticResource CardBorder}" BorderThickness="0,0,0,1" Height="38" VerticalAlignment="Top" Canvas.ZIndex="20">
         <StackPanel Orientation="Horizontal" Spacing="2" Margin="16,3" VerticalAlignment="Stretch">
           <Button x:Name="ExplorerOpenButton" Content="›" Style="{StaticResource QuietButton}" Padding="8,5" MinWidth="0" Visibility="Collapsed" Click="ExplorerOpen_Click" ToolTipService.ToolTip="자료 탐색기 펼치기" AutomationProperties.Name="자료 탐색기 펼치기" />
           <Grid>
@@ -108,7 +124,7 @@
         </StackPanel>
       </Border>
 
-      <Grid x:Name="DocumentGroupsHost" Grid.Column="1" Margin="0,38,0,0" ColumnSpacing="1">
+      <Grid x:Name="DocumentGroupsHost" Grid.Column="2" Margin="0,38,0,0" ColumnSpacing="1">
         <Grid.ColumnDefinitions>
           <ColumnDefinition Width="*" />
         </Grid.ColumnDefinitions>
@@ -176,7 +192,7 @@
       </Border>
       </Grid>
 
-      <Border x:Name="ConstellationPanel" Grid.Column="1" Margin="0,38,0,0" Visibility="Collapsed" Background="#151515" Canvas.ZIndex="10">
+      <Border x:Name="ConstellationPanel" Grid.Column="2" Margin="0,38,0,0" Visibility="Collapsed" Background="#151515" Canvas.ZIndex="10">
         <Grid RowDefinitions="Auto,*">
           <Grid ColumnDefinitions="*,Auto,Auto,Auto" Margin="14,12,14,10">
             <StackPanel VerticalAlignment="Center" Spacing="1">
@@ -228,7 +244,7 @@
         </Grid>
       </Border>
 
-      <Border x:Name="PdfPanel" Grid.Column="1" Margin="0,38,0,0" Visibility="Collapsed" Background="{StaticResource DocumentBackground}" Canvas.ZIndex="10">
+      <Border x:Name="PdfPanel" Grid.Column="2" Margin="0,38,0,0" Visibility="Collapsed" Background="{StaticResource DocumentBackground}" Canvas.ZIndex="10">
         <Grid RowDefinitions="Auto,*">
           <Grid ColumnDefinitions="*,Auto,Auto,Auto" Margin="18,12,18,10" ColumnSpacing="7">
             <StackPanel VerticalAlignment="Center" Spacing="1">

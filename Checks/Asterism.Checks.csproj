@@ -1,33 +1,34 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup><OutputType>Exe</OutputType><TargetFramework>net8.0</TargetFramework><ImplicitUsings>enable</ImplicitUsings><Nullable>enable</Nullable></PropertyGroup>
   <ItemGroup>
-    <Compile Include="..\Models.cs" Link="Models.cs" />
-    <Compile Include="..\ApplicationDataPaths.cs" Link="ApplicationDataPaths.cs" />
-    <Compile Include="..\UiLayoutSettingsService.cs" Link="UiLayoutSettingsService.cs" />
-    <Compile Include="..\MarkdownText.cs" Link="MarkdownText.cs" />
-    <Compile Include="..\MarkdownHeadingLevelService.cs" Link="MarkdownHeadingLevelService.cs" />
-    <Compile Include="..\PdfReaderRules.cs" Link="PdfReaderRules.cs" />
-    <Compile Include="..\PdfDocumentService.cs" Link="PdfDocumentService.cs" />
-    <Compile Include="..\SemanticTextChunker.cs" Link="SemanticTextChunker.cs" />
-    <Compile Include="..\LocalEmbeddingModel.cs" Link="LocalEmbeddingModel.cs" />
-    <Compile Include="..\SemanticIndexStore.cs" Link="SemanticIndexStore.cs" />
-    <Compile Include="..\SemanticLinkService.cs" Link="SemanticLinkService.cs" />
-    <Compile Include="..\ChatGptImportService.cs" Link="ChatGptImportService.cs" />
-    <Compile Include="..\NoteRepository.cs" Link="NoteRepository.cs" />
-    <Compile Include="..\NoteLinkService.cs" Link="NoteLinkService.cs" />
-    <Compile Include="..\GraphLayoutService.cs" Link="GraphLayoutService.cs" />
-    <Compile Include="..\GraphViewportService.cs" Link="GraphViewportService.cs" />
-    <Compile Include="..\GraphFieldStarService.cs" Link="GraphFieldStarService.cs" />
-    <Compile Include="..\GraphLabelLayoutService.cs" Link="GraphLabelLayoutService.cs" />
-    <Compile Include="..\VaultTreeService.cs" Link="VaultTreeService.cs" />
-    <Compile Include="..\VaultOrderService.cs" Link="VaultOrderService.cs" />
-    <Compile Include="..\UpdateService.cs" Link="UpdateService.cs" />
-    <Compile Include="..\MarkdownPreviewRenderer.cs" Link="MarkdownPreviewRenderer.cs" />
-    <Compile Include="..\PreviewEditSession.cs" Link="PreviewEditSession.cs" />
-    <Compile Include="..\TextDiagramRenderer.cs" Link="TextDiagramRenderer.cs" />
-    <Compile Include="..\CodeSyntaxHighlighter.cs" Link="CodeSyntaxHighlighter.cs" />
-    <Compile Include="..\BuiltInGuideService.cs" Link="BuiltInGuideService.cs" />
-    <Compile Include="..\FolderExpansionService.cs" Link="FolderExpansionService.cs" />
+    <Compile Include="..\Core\Models.cs" Link="Models.cs" />
+    <Compile Include="..\Core\ApplicationDataPaths.cs" Link="ApplicationDataPaths.cs" />
+    <Compile Include="..\Features\Settings\UiLayoutSettingsService.cs" Link="UiLayoutSettingsService.cs" />
+    <Compile Include="..\Rendering\MarkdownText.cs" Link="MarkdownText.cs" />
+    <Compile Include="..\Rendering\MarkdownHeadingLevelService.cs" Link="MarkdownHeadingLevelService.cs" />
+    <Compile Include="..\Features\Documents\PdfReaderRules.cs" Link="PdfReaderRules.cs" />
+    <Compile Include="..\Features\Documents\PdfDocumentService.cs" Link="PdfDocumentService.cs" />
+    <Compile Include="..\Features\Documents\TextDocumentService.cs" Link="TextDocumentService.cs" />
+    <Compile Include="..\Features\Semantic\SemanticTextChunker.cs" Link="SemanticTextChunker.cs" />
+    <Compile Include="..\Features\Semantic\LocalEmbeddingModel.cs" Link="LocalEmbeddingModel.cs" />
+    <Compile Include="..\Features\Semantic\SemanticIndexStore.cs" Link="SemanticIndexStore.cs" />
+    <Compile Include="..\Features\Semantic\SemanticLinkService.cs" Link="SemanticLinkService.cs" />
+    <Compile Include="..\Features\Import\ChatGptImportService.cs" Link="ChatGptImportService.cs" />
+    <Compile Include="..\Features\Documents\NoteRepository.cs" Link="NoteRepository.cs" />
+    <Compile Include="..\Features\Documents\NoteLinkService.cs" Link="NoteLinkService.cs" />
+    <Compile Include="..\Features\Constellation\GraphLayoutService.cs" Link="GraphLayoutService.cs" />
+    <Compile Include="..\Features\Constellation\GraphViewportService.cs" Link="GraphViewportService.cs" />
+    <Compile Include="..\Features\Constellation\GraphFieldStarService.cs" Link="GraphFieldStarService.cs" />
+    <Compile Include="..\Features\Constellation\GraphLabelLayoutService.cs" Link="GraphLabelLayoutService.cs" />
+    <Compile Include="..\Features\Explorer\VaultTreeService.cs" Link="VaultTreeService.cs" />
+    <Compile Include="..\Features\Explorer\VaultOrderService.cs" Link="VaultOrderService.cs" />
+    <Compile Include="..\Features\Updates\UpdateService.cs" Link="UpdateService.cs" />
+    <Compile Include="..\Rendering\MarkdownPreviewRenderer.cs" Link="MarkdownPreviewRenderer.cs" />
+    <Compile Include="..\Rendering\PreviewEditSession.cs" Link="PreviewEditSession.cs" />
+    <Compile Include="..\Rendering\TextDiagramRenderer.cs" Link="TextDiagramRenderer.cs" />
+    <Compile Include="..\Rendering\CodeSyntaxHighlighter.cs" Link="CodeSyntaxHighlighter.cs" />
+    <Compile Include="..\Features\Guides\BuiltInGuideService.cs" Link="BuiltInGuideService.cs" />
+    <Compile Include="..\Features\Explorer\FolderExpansionService.cs" Link="FolderExpansionService.cs" />
     <PackageReference Include="Markdig" Version="1.3.2" />
     <PackageReference Include="Microsoft.Data.Sqlite" Version="8.0.30" />
     <PackageReference Include="Microsoft.ML.OnnxRuntime" Version="1.29.0" />

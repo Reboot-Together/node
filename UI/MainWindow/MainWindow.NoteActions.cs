@@ -13,6 +13,12 @@ public sealed partial class MainWindow
     private void ContextCreateNote_Click(object sender, RoutedEventArgs e) =>
         NewNote(_contextFolder ?? _workspace.RootPath);
 
+    private void ContextCreateText_Click(object sender, RoutedEventArgs e) =>
+        NewTextDocument(_contextFolder ?? _workspace.RootPath);
+
+    private void NewTextToRoot_Click(object sender, RoutedEventArgs e) =>
+        NewTextDocument(_workspace.RootPath);
+
     private async void CreateFolder_Click(object sender, RoutedEventArgs e)
     {
         var parent = _contextFolder ?? (_contextNote is null ? null : Path.GetDirectoryName(_contextNote.Path));
@@ -105,7 +111,9 @@ public sealed partial class MainWindow
         if (title is null || title.Equals(note.Title, StringComparison.Ordinal)) return;
         try
         {
-            var renamed = _repository.Rename(note.Path, title);
+            var renamed = note.IsPlainText
+                ? _textRepository.Rename(note.Path, title)
+                : _repository.Rename(note.Path, title);
             _vaultTreeService.RemapOrderPath(_workspace.RootPath, note.Path, renamed.Path);
             _selected = null;
             _contextNote = renamed;
@@ -124,8 +132,8 @@ public sealed partial class MainWindow
 
         var confirmation = new ContentDialog
         {
-            Title = "노트 삭제",
-            Content = $"'{note.Title}' 노트를 삭제할까요?\n\n가능하면 Windows 휴지통으로 이동하며, 휴지통을 지원하지 않는 저장소에서는 볼트의 .trash 폴더로 이동합니다.",
+            Title = note.IsPlainText ? "TXT 삭제" : "노트 삭제",
+            Content = $"'{note.Title}' {(note.IsPlainText ? "TXT 파일" : "노트")}을 삭제할까요?\n\n가능하면 Windows 휴지통으로 이동하며, 휴지통을 지원하지 않는 저장소에서는 볼트의 .trash 폴더로 이동합니다.",
             PrimaryButtonText = "삭제",
             CloseButtonText = "취소",
             DefaultButton = ContentDialogButton.Close,
@@ -138,7 +146,8 @@ public sealed partial class MainWindow
             _saveTimer.Stop();
             _loading = true;
             _selected = null;
-            _repository.MoveToTrash(note.Path);
+            if (note.IsPlainText) _textRepository.MoveToTrash(note.Path);
+            else _repository.MoveToTrash(note.Path);
             _vaultTreeService.RemoveOrderPath(_workspace.RootPath, note.Path);
             _loading = false;
             RefreshNotes();
@@ -149,7 +158,7 @@ public sealed partial class MainWindow
         {
             _loading = false;
             _selected = note;
-            await ShowMessage("삭제 실패", $"노트를 삭제하지 못했습니다.\n\n{exception.Message}");
+            await ShowMessage("삭제 실패", $"자료를 삭제하지 못했습니다.\n\n{exception.Message}");
         }
     }
 
@@ -163,9 +172,18 @@ public sealed partial class MainWindow
             note = _notes.FirstOrDefault(item => item.Path == note.Path) ?? note;
         }
 
-        var metadata = note.Metadata with { Created = DateTime.Today };
-        var copy = _repository.Create($"{note.Title} 복사본", metadata);
-        copy = _repository.Save(copy.Path, copy.Title, note.Body, metadata);
+        NoteInfo copy;
+        if (note.IsPlainText)
+        {
+            copy = _textRepository.Create(Path.GetDirectoryName(note.Path)!, $"{note.Title} 복사본");
+            copy = _textRepository.Save(copy.Path, note.Body);
+        }
+        else
+        {
+            var metadata = note.Metadata with { Created = DateTime.Today };
+            copy = _repository.Create($"{note.Title} 복사본", metadata);
+            copy = _repository.Save(copy.Path, copy.Title, note.Body, metadata);
+        }
         RefreshNotes();
         Select(copy);
     }
@@ -181,7 +199,9 @@ public sealed partial class MainWindow
 
         try
         {
-            var moved = _repository.Move(note.Path, folder.Path);
+            var moved = note.IsPlainText
+                ? _textRepository.Move(note.Path, folder.Path)
+                : _repository.Move(note.Path, folder.Path);
             _vaultTreeService.RemapOrderPath(_workspace.RootPath, note.Path, moved.Path);
             _selected = null;
             RefreshNotes();
@@ -191,7 +211,7 @@ public sealed partial class MainWindow
         {
             await ShowMessage(
                 "이동 실패",
-                $"노트는 현재 저장소 내부의 폴더로만 이동할 수 있습니다.\n\n{exception.Message}");
+                $"자료는 현재 저장소 내부의 폴더로만 이동할 수 있습니다.\n\n{exception.Message}");
         }
     }
 
@@ -225,6 +245,7 @@ public sealed partial class MainWindow
         SaveCurrent();
         _workspace.SetRootPath(folder.Path);
         _repository.SetRootPath(folder.Path);
+        _textRepository.SetRootPath(folder.Path);
         _pdfRepository.SetRootPath(folder.Path);
         _expandedFolders.Clear();
         _folderExpansionInitialized = false;

@@ -57,6 +57,7 @@ public sealed partial class MainWindow
         if (item.IsFolder)
         {
             menu.Items.Add(MenuItem("새 노트", ContextCreateNote_Click));
+            menu.Items.Add(MenuItem("새 TXT", ContextCreateText_Click));
             menu.Items.Add(MenuItem("새 폴더", CreateFolder_Click));
             menu.Items.Add(MenuItem("PDF 가져오기", ImportPdf_Click));
             if (!item.IsRoot)
@@ -108,6 +109,7 @@ public sealed partial class MainWindow
 
         var menu = new MenuFlyout();
         menu.Items.Add(MenuItem("새 노트", ContextCreateNote_Click));
+        menu.Items.Add(MenuItem("새 TXT", ContextCreateText_Click));
         menu.Items.Add(MenuItem("새 폴더", CreateFolder_Click));
         menu.Items.Add(MenuItem("PDF 가져오기", ImportPdf_Click));
         menu.ShowAt(NoteList, e.GetPosition(NoteList));
@@ -182,7 +184,9 @@ public sealed partial class MainWindow
                 else if (source.Note is NoteInfo note)
                 {
                     if (_selected?.Path == note.Path) SaveCurrent();
-                    destinationPath = _repository.Move(note.Path, target!.Path).Path;
+                    destinationPath = (note.IsPlainText
+                        ? _textRepository.Move(note.Path, target!.Path)
+                        : _repository.Move(note.Path, target!.Path)).Path;
                     _vaultTreeService.RemapOrderPath(_workspace.RootPath, sourcePath, destinationPath);
                 }
                 else if (source.IsPdf)
@@ -212,7 +216,9 @@ public sealed partial class MainWindow
                     else if (source.Note is NoteInfo note)
                     {
                         if (_selected?.Path == note.Path) SaveCurrent();
-                        destinationPath = _repository.Move(note.Path, targetParent).Path;
+                        destinationPath = (note.IsPlainText
+                            ? _textRepository.Move(note.Path, targetParent)
+                            : _repository.Move(note.Path, targetParent)).Path;
                         _vaultTreeService.RemapOrderPath(_workspace.RootPath, sourcePath, destinationPath);
                     }
                     else if (source.IsPdf)
